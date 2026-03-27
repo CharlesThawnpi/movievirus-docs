@@ -69,6 +69,14 @@
 - Added atomic entitlement transaction dependency
 - Added concurrency risk and mitigation for quota correctness
 
+### CHG-09 | 2026-03-27
+- Finalized token UX (single entry, no repeat for linked users)
+- Introduced automatic oldest-account replacement policy
+- Set token expiry to 90 days
+- Added delivery retry logic (max 3 attempts)
+- Defined duplicate request protection window (30–60 seconds)
+- Simplified admin model for Phase 1
+
 ---
 
 # =========================================================
@@ -319,6 +327,14 @@ Suggested statuses:
 - send file
 - log usage
 - deduct quota
+Final Behavior Additions:
+
+- token must be entered only once per Telegram account
+- once linked, user is never asked for token again unless manually reset
+
+Expiry:
+- tokens expire after 90 days
+- expiry must be enforced at validation stage
 
 ### M02-F02. Validation Rule
 Check:
@@ -356,6 +372,14 @@ All critical decisions must be validated through backend APIs and database state
 - linked account reuse
 - auto-link if slot available
 - deny if no slot and no allowed replacement path
+Delivery Retry Logic:
+
+- system must retry failed file send up to 3 times
+- if all retries fail:
+   - mark request as send_failed
+   - do not deduct quota
+   - notify user
+   - trigger admin notification
 
 ### M03-F02. Naming Rule
 Use:
@@ -424,6 +448,19 @@ Admin should be able to inspect:
 - quota adjustment history
 - suspicious activity history
 - admin action history
+
+Linked Account Replacement Rule:
+
+- when max_linked_accounts limit is reached:
+   - system must automatically replace the oldest linked account
+   - oldest determined by linked_at timestamp
+
+- replacement must:
+   - update link status of old account
+   - create new link for incoming account
+   - log event in token_account_change_logs
+
+- user must be informed of replacement action
 
 ### M06-F02. User Self-History
 User should be able to inspect:
@@ -846,6 +883,13 @@ Indexes:
 - index(telegram_user_id, attempted_at desc)
 - index(attempt_status, attempted_at desc)
 
+Additional Rule:
+
+- replacement logic must select oldest active linked account (linked_at ASC)
+- update replaced account:
+   - link_status = replaced
+   - replaced_at = now()
+
 ### M10-F09. Payment, Review, and Plan Change Tables
 
 #### Table: payment_transactions
@@ -1005,6 +1049,11 @@ Indexes:
 #### Table: admin_users
 Purpose:
 - stores WebApp admin/operator identities
+
+Phase 1 Simplification:
+
+- system may operate with a single admin user
+- role structure remains for future expansion but is not required initially
 
 Fields:
 - id (uuid, pk)
@@ -1489,6 +1538,15 @@ Mitigation:
 - row-level locking or equivalent safe concurrency control on token and daily counter rows
 - duplicate guard key for short-window repeat requests
 - append-only usage log before/with quota mutation trace
+
+### RSK-12. Auto Replacement Confusion Risk
+
+Description:
+- users may not realize their account was replaced
+
+Mitigation:
+- clear notification message on replacement
+- optional future: replacement history view in WebApp
 ---
 
 # =========================================================
