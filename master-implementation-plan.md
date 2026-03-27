@@ -102,6 +102,13 @@
 - Added VPS-1 backup and data migration strategy
 - Defined migration as transformation process, not direct restore
 - Added mapping, validation, and rollback strategy
+
+### CHG-014 | 2026-03-27
+- Added detailed migration mapping (table + field level)
+- Defined transformation and loading order
+- Introduced plan assignment logic
+- Added migration validation steps
+- Added risk for incorrect plan mapping
 ---
 
 # =========================================================
@@ -2451,6 +2458,98 @@ Rules:
 - discard corrupted or irrelevant data
 - normalize data into new schema
 
+### M16-F04-S01. Detailed Table Mapping (Old → New)
+
+Mapping must be defined at table and field level.
+
+#### 1. Tokens
+
+Old → New:
+- old_tokens.token → tokens.token_hash (hashed during migration)
+- old_tokens.created_at → tokens.created_at
+- old_tokens.expiry → tokens.expires_at
+- old_tokens.quota_remaining → tokens.total_quota_remaining
+
+Additional:
+- map plan_id based on quota/price rules
+- generate token_masked during migration
+- set status:
+   - active / expired / exhausted
+
+---
+
+#### 2. Users → Linked Accounts
+
+Old → New:
+- old_users.telegram_user_id → token_linked_accounts.telegram_user_id
+- old_users.username → telegram_username
+
+Rules:
+- group users under correct token
+- assign linked_at using earliest known usage or creation time
+
+---
+
+#### 3. Requests → Usage Logs
+
+Old → New:
+- old_requests.user_id → telegram_user_id
+- old_requests.token → token_id
+- old_requests.file_id → media_ref_id
+- old_requests.status → request_status
+- old_requests.created_at → requested_at
+
+Rules:
+- only successful requests deduct quota
+- failed requests must have quota_delta = 0
+
+---
+
+#### 4. Payments
+
+Old → New:
+- old_payments.amount → amount_mmk
+- old_payments.method → payment_method
+- old_payments.status → payment_status
+- old_payments.timestamp → created_at
+
+Rules:
+- link payment → token where possible
+- otherwise keep as historical record
+
+---
+
+#### 5. Derived / Missing Fields
+
+Fields not present in old system must be generated:
+
+- token_hash → hash(old token)
+- token_masked → generate masked version
+- daily_usage_counters → recompute from usage logs
+- duplicate_guard_key → not required for historical data
+
+### M16-F04-S02. Plan Assignment Logic
+
+Old system may not have structured plans.
+
+Rules to assign plan_id:
+
+Option A (recommended):
+- map based on total quota:
+   - ≤30 → Starter
+   - ≤50 → Basic
+   - ≤100 → Plus
+   - ≤150 → Pro
+   - >150 → Premium
+
+Option B:
+- map based on payment amount
+
+Fallback:
+- assign default plan and log for admin review
+
+All mappings must be logged for audit.
+
 ---
 
 ### M16-F05. Migration Script
@@ -2466,6 +2565,87 @@ Rules:
 - do not bypass backend logic for critical fields
 - preserve audit integrity
 - log all migration actions
+
+### M16-F05-S01. Migration Execution Logic
+
+Migration must run in controlled stages:
+
+---
+
+#### Step 1. Extract
+
+- read old database
+- export tables:
+   - tokens
+   - users
+   - requests
+   - payments
+
+---
+
+#### Step 2. Transform
+
+For each dataset:
+
+Tokens:
+- hash token
+- assign plan_id
+- compute status
+
+Users:
+- group by token
+- deduplicate telegram_user_id
+
+Requests:
+- map status
+- calculate quota_delta
+
+Payments:
+- normalize method names
+- map statuses
+
+---
+
+#### Step 3. Load
+
+Insert order (IMPORTANT):
+
+1. plans (pre-created)
+2. tokens
+3. members (optional)
+4. token_linked_accounts
+5. token_usage_logs
+6. payment_transactions
+
+---
+
+#### Step 4. Post-Processing
+
+- rebuild daily_usage_counters
+- validate quota consistency:
+   initial_quota - usage = remaining_quota
+
+---
+
+#### Step 5. Validation Checks
+
+Must verify:
+
+- total tokens count match
+- total usage count match
+- random token audit:
+   - quota correctness
+   - linked accounts correctness
+
+---
+
+#### Step 6. Logging
+
+Migration script must log:
+
+- total migrated rows per table
+- skipped records
+- errors
 
 ---
 
@@ -2521,6 +2701,18 @@ Mitigation:
 - validation checks
 - admin manual adjustment tools
 - clear user messaging
+
+### RSK-MIG-04: Incorrect Plan Assignment
+
+Description:
+- wrong mapping may assign incorrect plan to tokens
+
+Impact:
+- unfair quota or limits
+
+Mitigation:
+- log all mappings
+- allow admin review and correction
 
 ---
 
