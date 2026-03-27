@@ -416,22 +416,55 @@ Suggested statuses:
 
 ## Module 02. File Request and Quota Enforcement
 
-### M02-F01. Preferred User Flow
-1. Search file
-2. Found result
-3. Request file
-4. Ask for token
-5. Validate token and rules
-6. Send file
-7. Log successful usage and deduct quota
+### M02-F01: Token Validation (Final Behavior)
 
-### M02-F02. Validation Rule
-Check:
-- token status
-- token expiry
-- total quota remaining
-- daily cap remaining
-- linked-account eligibility
+Validation Logic:
+
+1. IF telegram_user_id is already linked to token:
+   - DO NOT ask for token again
+   - allow access directly
+
+2. IF telegram_user_id is NOT linked:
+   - require token input
+   - validate token
+   - IF valid:
+       → proceed to linking logic
+
+3. Always enforce:
+   - token status (active, expired, suspended, revoked)
+   - total quota remaining
+   - daily cap
+
+Expiry Rule:
+- token expires after 90 days
+- expired tokens require renewal or new token
+- user must be clearly informed when expiry blocks access
+
+Purpose:
+- eliminate repeated token input
+- maintain strong entitlement enforcement
+
+### M02-F02: Linked Account Handling (Final Behavior)
+
+Rules:
+
+1. Each token has max linked accounts based on plan
+
+2. IF new user attempts access AND limit is reached:
+   - automatically replace the oldest linked account
+   - log the replacement event
+
+3. System must:
+   - notify user that oldest device/account was replaced
+   - ensure transparency
+
+4. Admin can:
+   - manually reset, remove, or reassign linked accounts via WebApp
+
+Purpose:
+- allow flexible sharing
+- prevent hard blocking UX
+- maintain fairness through controlled slots
 
 ### M02-F03. Fair Use Rule
 - successful file delivery consumes quota
@@ -445,10 +478,40 @@ Check:
 
 ## Module 03. Linked Accounts / Device Slots
 
-### M03-F01. Linked Account Rule
-- if Telegram account is already linked, allow normal validation
-- if not linked and free slot exists, auto-link
-- if no free slot exists, deny or use replacement/reset rules
+### M03-F01: Request Flow (Final)
+
+Search → Select File → Request File
+
+IF telegram_user_id is linked:
+→ proceed
+
+ELSE:
+→ ask token → validate → link account (with replacement if needed)
+
+Then:
+→ validate:
+   - token status
+   - expiry
+   - total quota
+   - daily cap
+
+→ process request:
+   - send file (retry up to 3 times if failure)
+
+→ IF success:
+   - log usage
+   - deduct quota
+
+→ IF failure after retries:
+   - do NOT deduct quota
+   - notify user
+   - notify admin
+
+Duplicate Protection:
+- repeated request within 30–60 seconds must not double deduct quota
+- system should return status message
+
+All denial reasons must be clearly shown to user.
 
 ### M03-F02. Same Person Rule
 Do not try to prove two Telegram accounts are the same human. Only enforce token-linked account slot policy.
