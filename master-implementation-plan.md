@@ -69,7 +69,7 @@
 - Added atomic entitlement transaction dependency
 - Added concurrency risk and mitigation for quota correctness
 
-### CHG-09 | 2026-03-27
+### CHG-08 | 2026-03-27
 - Finalized token UX (single entry, no repeat for linked users)
 - Introduced automatic oldest-account replacement policy
 - Set token expiry to 90 days
@@ -77,7 +77,7 @@
 - Defined duplicate request protection window (30–60 seconds)
 - Simplified admin model for Phase 1
 
-### CHG-011 | 2026-03-27
+### CHG-09 | 2026-03-27
 - Introduced full backend API layer design
 - Defined endpoint groups and responsibilities
 - Implemented indirect file delivery via secondary bot
@@ -86,6 +86,11 @@
 - Added API enforcement dependency
 - Added redirect payload security risk
 
+### CHG-10 | 2026-03-27
+- Added Module 14 backend API contracts with JSON-level request/response structure
+- Defined search, access validation, request validation, delivery verification, commit, payment, and admin endpoints
+- Added signed delivery payload dependency for indirect multi-bot file delivery
+- Added replay/tamper risk coverage for short-lived delivery payloads
 ---
 
 # =========================================================
@@ -1437,6 +1442,618 @@ Verify:
 - quota and daily-cap correctness
 - rollback readiness before final legacy shutdown
 
+## Module 14. Backend API Contracts
+
+### M14-F01. API Contract Principles
+
+API style:
+- JSON request/response format
+- versioned path prefix: `/api/v1`
+- HTTPS required
+- backend is the single source of truth
+- Telegram bot and WebApp are clients only
+
+Core rules:
+- bot must not enforce quota, expiry, linked-account, or payment state independently
+- plaintext token may be submitted over HTTPS to backend for validation; backend hashes/compares internally
+- all critical enforcement results must come from backend/database state
+- successful delivery, quota deduction, and daily counter update must remain atomic
+- indirect file delivery must use signed short-lived payloads validated by backend before delivery
+
+Response envelope:
+- `success` = boolean
+- `code` = stable machine-readable status code
+- `message` = short human-readable summary
+- `data` = object or null
+- `meta` = optional object
+
+Error format:
+```json
+{
+  "success": false,
+  "code": "TOKEN_EXPIRED",
+  "message": "Token expired. Please renew or purchase a new plan.",
+  "data": null,
+  "meta": {
+    "request_id": "req_01H..."
+  }
+}
+
+M14-F02. Internal Client Authentication
+
+Internal clients:
+
+primary Telegram bot
+delivery bot
+WebApp admin panel
+
+Required headers:
+
+X-Service-Key: <server-side secret>
+X-Client-Type: primary_bot | delivery_bot | webapp
+X-Request-Id: <unique id>
+
+Rules:
+
+service keys are server-side only
+user-facing Telegram clients must never see service keys
+admin login/session is separate from internal service authentication
+backend should reject requests with missing or invalid service key
+
+Example:
+
+{
+  "headers": {
+    "X-Service-Key": "svc_live_xxxxx",
+    "X-Client-Type": "primary_bot",
+    "X-Request-Id": "req_01J..."
+  }
+}
+M14-F03. Search API
+GET /api/v1/search/files
+
+Purpose:
+
+search movies/series before entitlement check
+allow discovery first, then require token/purchase at request stage
+
+Query params:
+
+q = required string
+year = optional integer
+subtitle = optional string
+page = optional integer
+limit = optional integer
+
+Success example:
+
+{
+  "success": true,
+  "code": "SEARCH_OK",
+  "message": "Search results found.",
+  "data": {
+    "items": [
+      {
+        "media_ref_id": "mov_100245",
+        "media_ref_type": "movie",
+        "title": "Example Movie",
+        "year": 2024,
+        "subtitle": "English",
+        "availability": "available"
+      }
+    ]
+  },
+  "meta": {
+    "page": 1,
+    "limit": 10,
+    "total": 1
+  }
+}
+GET /api/v1/search/details/{media_ref_id}
+
+Purpose:
+
+fetch full details for one result before request
+
+Success example:
+
+{
+  "success": true,
+  "code": "MEDIA_DETAILS_OK",
+  "message": "Media details loaded.",
+  "data": {
+    "media_ref_id": "mov_100245",
+    "media_ref_type": "movie",
+    "title": "Example Movie",
+    "year": 2024,
+    "subtitle_options": ["English", "Myanmar"],
+    "is_requestable": true
+  },
+  "meta": null
+}
+M14-F04. Token Entry and Link API
+POST /api/v1/access/validate-and-link
+
+Purpose:
+
+used when requesting user is not yet linked
+validates token
+links Telegram account
+auto-replaces oldest linked account if plan limit is full
+
+Request:
+
+{
+  "token_plaintext": "MV-8F3K2L9XQ7P1A6N",
+  "telegram_user": {
+    "telegram_user_id": 123456789,
+    "username": "example_user",
+    "first_name": "Example",
+    "last_name": "User"
+  },
+  "context": {
+    "source": "primary_bot",
+    "language_code": "my"
+  }
+}
+
+Success without replacement:
+
+{
+  "success": true,
+  "code": "TOKEN_VALIDATED_AND_LINKED",
+  "message": "Token verified successfully.",
+  "data": {
+    "token_id": "tok_01J...",
+    "plan": {
+      "code": "BASIC",
+      "name": "Basic",
+      "total_quota_remaining": 47,
+      "daily_cap": 5,
+      "daily_remaining": 5,
+      "expires_at": "2026-06-25T00:00:00Z"
+    },
+    "linked": true,
+    "replacement": {
+      "performed": false,
+      "replaced_telegram_user_id": null
+    }
+  },
+  "meta": null
+}
+
+Success with oldest-account replacement:
+
+{
+  "success": true,
+  "code": "TOKEN_VALIDATED_LINKED_OLDEST_REPLACED",
+  "message": "Token verified. Oldest linked account was replaced.",
+  "data": {
+    "token_id": "tok_01J...",
+    "plan": {
+      "code": "PLUS",
+      "name": "Plus",
+      "total_quota_remaining": 92,
+      "daily_cap": 10,
+      "daily_remaining": 10,
+      "expires_at": "2026-06-25T00:00:00Z"
+    },
+    "linked": true,
+    "replacement": {
+      "performed": true,
+      "replaced_telegram_user_id": 987654321
+    }
+  },
+  "meta": null
+}
+
+Common denial codes:
+
+INVALID_TOKEN
+TOKEN_EXPIRED
+TOKEN_SUSPENDED
+TOKEN_REVOKED
+TOKEN_EXHAUSTED
+TOKEN_DAILY_CAP_REACHED
+TOKEN_COOLDOWN_BLOCKED
+M14-F05. Linked Account Validation API
+POST /api/v1/access/validate-linked
+
+Purpose:
+
+used for already-linked Telegram accounts
+should not require token input again unless manually reset
+
+Request:
+
+{
+  "telegram_user_id": 123456789,
+  "media_ref_id": "mov_100245",
+  "media_ref_type": "movie"
+}
+
+Success example:
+
+{
+  "success": true,
+  "code": "LINKED_ACCESS_OK",
+  "message": "Linked account validated.",
+  "data": {
+    "token_id": "tok_01J...",
+    "plan_code": "BASIC",
+    "total_quota_remaining": 47,
+    "daily_remaining": 5,
+    "expires_at": "2026-06-25T00:00:00Z"
+  },
+  "meta": null
+}
+
+Common denial codes:
+
+LINK_NOT_FOUND
+TOKEN_EXPIRED
+TOKEN_SUSPENDED
+TOKEN_REVOKED
+TOKEN_EXHAUSTED
+TOKEN_DAILY_CAP_REACHED
+M14-F06. Request Pre-Validation API
+POST /api/v1/requests/validate
+
+Purpose:
+
+validates whether a file request may proceed before delivery link is issued
+
+Request:
+
+{
+  "telegram_user_id": 123456789,
+  "media_ref_id": "mov_100245",
+  "media_ref_type": "movie",
+  "request_context": {
+    "source_chat_id": -100111222333,
+    "source_message_id": 4567
+  }
+}
+
+Success example:
+
+{
+  "success": true,
+  "code": "REQUEST_APPROVED",
+  "message": "Request approved.",
+  "data": {
+    "request_id": "req_01J...",
+    "token_id": "tok_01J...",
+    "duplicate_guard_key": "dup_01J...",
+    "total_quota_remaining": 47,
+    "daily_remaining": 5,
+    "delivery_payload": {
+      "signed_token": "dlp_xxxxx",
+      "expires_at": "2026-03-27T12:03:00Z"
+    }
+  },
+  "meta": null
+}
+
+Duplicate example:
+
+{
+  "success": false,
+  "code": "DUPLICATE_REQUEST_IGNORED",
+  "message": "Same file was requested recently. Please wait a moment.",
+  "data": {
+    "duplicate_window_seconds": 45
+  },
+  "meta": null
+}
+
+Common denial codes:
+
+LINK_NOT_FOUND
+TOKEN_EXPIRED
+TOKEN_EXHAUSTED
+TOKEN_DAILY_CAP_REACHED
+FILE_NOT_FOUND
+REQUEST_NOT_ALLOWED
+M14-F07. Delivery Payload Verification API
+POST /api/v1/delivery/verify-payload
+
+Purpose:
+
+called by delivery bot before sending file
+validates signed short-lived payload from primary bot
+
+Request:
+
+{
+  "signed_token": "dlp_xxxxx",
+  "telegram_user_id": 123456789
+}
+
+Success example:
+
+{
+  "success": true,
+  "code": "DELIVERY_PAYLOAD_VALID",
+  "message": "Delivery payload verified.",
+  "data": {
+    "request_id": "req_01J...",
+    "token_id": "tok_01J...",
+    "media_ref_id": "mov_100245",
+    "media_ref_type": "movie",
+    "delivery_window_seconds": 180,
+    "delete_after_seconds": 180,
+    "file_source": {
+      "mode": "telegram_reference",
+      "file_chat_id": -100444555666,
+      "file_message_id": 778899
+    }
+  },
+  "meta": null
+}
+
+Denial codes:
+
+DELIVERY_PAYLOAD_INVALID
+DELIVERY_PAYLOAD_EXPIRED
+DELIVERY_PAYLOAD_ALREADY_USED
+DELIVERY_PAYLOAD_USER_MISMATCH
+M14-F08. Request Commit Success API
+POST /api/v1/requests/commit-success
+
+Purpose:
+
+called only after delivery bot successfully sends the file
+deducts quota and updates daily counter atomically
+
+Request:
+
+{
+  "request_id": "req_01J...",
+  "telegram_user_id": 123456789,
+  "delivery_result": {
+    "delivery_chat_id": 123456789,
+    "delivery_message_id": 999001,
+    "delivered_at": "2026-03-27T12:01:30Z"
+  }
+}
+
+Success example:
+
+{
+  "success": true,
+  "code": "REQUEST_COMMITTED",
+  "message": "Quota deducted successfully.",
+  "data": {
+    "token_id": "tok_01J...",
+    "quota_delta": 1,
+    "total_quota_remaining": 46,
+    "daily_remaining": 4
+  },
+  "meta": null
+}
+
+Denial codes:
+
+REQUEST_NOT_FOUND
+REQUEST_ALREADY_COMMITTED
+COMMIT_CONFLICT
+M14-F09. Request Commit Failure API
+POST /api/v1/requests/commit-failure
+
+Purpose:
+
+called when delivery fails after up to 3 retries
+must not deduct quota
+should trigger admin notification workflow
+
+Request:
+
+{
+  "request_id": "req_01J...",
+  "telegram_user_id": 123456789,
+  "failure": {
+    "reason_code": "SEND_FAILED_AFTER_RETRIES",
+    "retry_count": 3,
+    "last_error": "Telegram timeout"
+  }
+}
+
+Success example:
+
+{
+  "success": true,
+  "code": "REQUEST_FAILURE_RECORDED",
+  "message": "Failure recorded. Quota not deducted.",
+  "data": {
+    "admin_notification_queued": true,
+    "quota_delta": 0
+  },
+  "meta": null
+}
+M14-F10. Telegram Stars Payment API
+POST /api/v1/payments/telegram-stars/webhook
+
+Purpose:
+
+receive confirmed Stars payment result
+auto-approve and generate token immediately
+
+Request:
+
+{
+  "telegram_charge_id": "tg_01J...",
+  "plan_code": "BASIC",
+  "telegram_user_id": 123456789,
+  "amount_stars": 500,
+  "currency": "XTR"
+}
+
+Success example:
+
+{
+  "success": true,
+  "code": "PAYMENT_APPROVED_TOKEN_CREATED",
+  "message": "Payment approved and token created.",
+  "data": {
+    "payment_transaction_id": "pay_01J...",
+    "token_id": "tok_01J...",
+    "token_masked": "MV-****-****-1A6N",
+    "plan_code": "BASIC",
+    "expires_at": "2026-06-25T00:00:00Z"
+  },
+  "meta": null
+}
+M14-F11. Manual Payment API
+POST /api/v1/payments/manual/submit
+
+Purpose:
+
+submit local manual payment proof for admin review
+
+Request:
+
+{
+  "plan_code": "PLUS",
+  "member": {
+    "display_name": "Example Buyer",
+    "phone_number": "09xxxxxxx"
+  },
+  "payment": {
+    "amount_mmk": 10000,
+    "payer_reference": "KBZ-123456",
+    "screenshot_file_id": "AgACAgUAAx..."
+  }
+}
+
+Success example:
+
+{
+  "success": true,
+  "code": "PAYMENT_SUBMITTED",
+  "message": "Payment submitted for review.",
+  "data": {
+    "payment_transaction_id": "pay_01J...",
+    "payment_status": "pending"
+  },
+  "meta": null
+}
+POST /api/v1/admin/payments/{payment_transaction_id}/approve
+
+Purpose:
+
+admin approval for local manual payment
+generates token and returns/send-ready token details
+
+Success example:
+
+{
+  "success": true,
+  "code": "PAYMENT_APPROVED_TOKEN_CREATED",
+  "message": "Payment approved and token created.",
+  "data": {
+    "payment_transaction_id": "pay_01J...",
+    "token_id": "tok_01J...",
+    "token_masked": "MV-****-****-1A6N",
+    "plan_code": "PLUS",
+    "expires_at": "2026-06-25T00:00:00Z",
+    "delivery_action": "send_token_to_user"
+  },
+  "meta": null
+}
+POST /api/v1/admin/payments/{payment_transaction_id}/reject
+
+Purpose:
+
+reject local manual payment with reason
+
+Request:
+
+{
+  "reason": "Screenshot does not match payment amount."
+}
+M14-F12. Admin Plan and Token APIs
+GET /api/v1/admin/plans
+POST /api/v1/admin/plans
+PATCH /api/v1/admin/plans/{plan_id}
+
+Plan response example:
+
+{
+  "success": true,
+  "code": "PLAN_SAVED",
+  "message": "Plan updated successfully.",
+  "data": {
+    "plan_id": "pln_01J...",
+    "code": "PREMIUM",
+    "price_mmk": 20000,
+    "price_stars": 2000,
+    "total_quota": 200,
+    "daily_cap": 20,
+    "duration_days": 90,
+    "max_linked_accounts": 5,
+    "is_active": true
+  },
+  "meta": null
+}
+POST /api/v1/admin/tokens/create
+PATCH /api/v1/admin/tokens/{token_id}
+POST /api/v1/admin/tokens/{token_id}/revoke
+POST /api/v1/admin/tokens/{token_id}/extend-expiry
+POST /api/v1/admin/tokens/{token_id}/adjust-quota
+POST /api/v1/admin/tokens/{token_id}/reset-linked-accounts
+GET /api/v1/admin/tokens/{token_id}/logs
+
+Quota adjustment example:
+
+{
+  "delta_quota": 5,
+  "reason_code": "manual_restore",
+  "notes": "Delivery failure recovery"
+}
+M14-F13. Notifications and Status Message Contract
+
+User-facing status codes that bot/UI should map clearly:
+
+INVALID_TOKEN
+TOKEN_EXPIRED
+TOKEN_SUSPENDED
+TOKEN_REVOKED
+TOKEN_EXHAUSTED
+TOKEN_DAILY_CAP_REACHED
+DUPLICATE_REQUEST_IGNORED
+TOKEN_VALIDATED_LINKED_OLDEST_REPLACED
+REQUEST_APPROVED
+REQUEST_COMMITTED
+REQUEST_FAILURE_RECORDED
+PAYMENT_SUBMITTED
+PAYMENT_APPROVED_TOKEN_CREATED
+PAYMENT_REJECTED
+
+Rules:
+
+all denial reasons must be user-readable
+replacement events should notify both the incoming requester and replaced account when reachable
+send-failure events should notify requester and admin
+delivery link expiry/delete timing should be made visible to user
+M14-F14. API Idempotency and Logging Rules
+
+Rules:
+
+all mutating endpoints should accept or generate a request correlation ID
+commit endpoints must be idempotent to prevent double deduction
+duplicate request logic must be enforced server-side, not by bot memory
+all admin mutation endpoints must create admin_action_logs
+all verification failures should write token_verification_attempt_logs where relevant
+all delivery failures should write token_usage_logs with zero quota deduction
+
+---
+
+**Insert below `### DEP-12.`**
+
+```markdown
+### DEP-13. Signed Delivery Payload Validation
+Required before multi-bot production delivery so the primary bot can issue short-lived signed download payloads and the delivery bot can verify them safely before sending files.
 ---
 
 # =========================================================
@@ -1734,6 +2351,17 @@ Mitigation:
 - signed payload with expiry
 - one-time or short-lived token validation
 - backend verification before file delivery
+
+### RSK-13. Delivery Payload Replay/Tamper Risk
+Risk:
+- users may reuse, forward, or tamper with signed delivery links/buttons to attempt unauthorized access
+
+Mitigation:
+- short-lived signed payloads
+- backend verification before delivery
+- telegram_user_id binding where applicable
+- one-time-use or replay-guard validation
+- clear expiry handling and delivery-failure logging
 ---
 
 # =========================================================
