@@ -94,6 +94,11 @@ Purpose:
 - Added top-level section numbering for easier future updates and references
 - Preserved stable Core Rule, Module, Feature, and Queue IDs while improving navigation and detectability
 
+### CHG-006 | 2026-03-27
+- Refined update protocol so future document edits must reference exact existing headings or stable IDs
+- Disallowed invented placement labels when the heading does not exist in the current source
+- Improved paste-ready targeting format to make manual updates easier and less ambiguous
+
 ---
 
 # =========================================================
@@ -101,8 +106,9 @@ Purpose:
 # =========================================================
 
 ## Update Protocol
-Use this document as the master source. Future updates should follow these rules:
+Use this document as the master source.
 
+Future updates should follow these rules:
 1. Do not rewrite the whole document unless explicitly requested.
 2. Update only the relevant section, module, feature, queue item, or compiled output.
 3. Preserve numbering and IDs where possible.
@@ -111,12 +117,21 @@ Use this document as the master source. Future updates should follow these rules
 6. Update the Change Log whenever a meaningful change is made.
 7. Recompile the final Custom GPT instruction only after source sections are updated.
 8. Keep this document aligned with the Master Implementation Plan when shared rules or structures change.
-9. Preserve stable meanings even when wording, order, or section presentation is refined.
-10. Prefer inserting into the correct existing section instead of creating detached add-on blocks.
+9. When giving update instructions, always reference exact existing section names, headings, or stable IDs that already exist in the document.
+10. Do not use invented placement labels such as "System Context", "Infrastructure Section", or similar unless those exact headings already exist in the current document.
+11. If adding new text between existing sections, specify the insertion point using the nearest real heading or ID, such as:
+   - "insert below `### CR-11`"
+   - "insert below `### M09-F04`"
+   - "insert above `## Future Additions Queue`"
+12. If the exact insertion point cannot be confirmed from the current document text, say so honestly and provide the update as:
+   - target section name
+   - nearest confirmed heading/ID
+   - paste-ready text
+   Do not pretend an unverified heading exists.
 
 ### Example update requests
 - Update only Change Log + Module 06
-- Insert new feature as M07-F06
+- Insert new feature as M07-F06 below M07-F05
 - Rewrite description but keep instruction unchanged
 - Move queue item Q-004 into Module 08
 - Recompile final instruction from current source
