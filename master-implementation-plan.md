@@ -97,6 +97,11 @@
 - Defined project structure and module responsibilities
 - Defined transaction logic and middleware layer
 - Added Phase 1 build order and constraints
+
+### CHG-013 | 2026-03-27
+- Added VPS-1 backup and data migration strategy
+- Defined migration as transformation process, not direct restore
+- Added mapping, validation, and rollback strategy
 ---
 
 # =========================================================
@@ -2370,6 +2375,152 @@ Rules:
 - multi-instance scaling
 - load balancer
 - analytics dashboard
+
+## Module 16. VPS-1 Backup and Data Migration Strategy
+
+### M16-F01. Migration Philosophy
+
+System migration must NOT be treated as direct database restore.
+
+Rules:
+- new system uses different schema and logic
+- old data must be transformed before import
+- migration must preserve:
+   - tokens
+   - user associations
+   - usage history (if possible)
+   - payment records
+
+Purpose:
+- ensure clean transition without corrupting new system design
+
+---
+
+### M16-F02. VPS-1 Backup Requirements
+
+Before any implementation:
+
+Create full backup of VPS-1:
+
+1. Database dump
+   - full SQL dump
+   - include all tables
+
+2. File storage (if applicable)
+   - media references
+   - metadata
+
+3. Bot configuration
+   - environment variables
+   - tokens
+
+Rules:
+- store backup securely
+- keep at least 2 copies
+- do not overwrite original
+
+---
+
+### M16-F03. Old System Data Analysis
+
+Identify:
+
+- tables and structure
+- token format
+- user linkage model
+- request logs
+- payment records
+
+Output:
+- data inventory document
+
+---
+
+### M16-F04. Data Mapping Strategy
+
+Define mapping between old and new system:
+
+Examples:
+
+- old_tokens → tokens
+- old_users → token_linked_accounts
+- old_requests → token_usage_logs
+
+Rules:
+- map only necessary data
+- discard corrupted or irrelevant data
+- normalize data into new schema
+
+---
+
+### M16-F05. Migration Script
+
+Implementation:
+
+- create one-time migration script
+- read old DB
+- transform data
+- insert into new DB
+
+Rules:
+- do not bypass backend logic for critical fields
+- preserve audit integrity
+- log all migration actions
+
+---
+
+### M16-F06. Migration Validation
+
+After import:
+
+- verify token counts
+- verify quota values
+- verify linked accounts
+- verify sample request logs
+
+---
+
+### M16-F07. Rollback Strategy
+
+If migration fails:
+
+- restore VPS-1 system
+- do not partially switch users
+
+Rules:
+- migration must be reversible
+- never overwrite original data
+
+---
+
+### M16-F08. Migration Execution Plan
+
+Steps:
+
+1. Backup VPS-1
+2. Setup VPS-2 (new system)
+3. Run migration script
+4. Validate data
+5. Switch bot to new backend
+6. Monitor system
+
+---
+
+### M16-F09. Risks
+
+RSK-MIG-01:
+- data mismatch between systems
+
+RSK-MIG-02:
+- lost quota or incorrect balances
+
+RSK-MIG-03:
+- user confusion after migration
+
+Mitigation:
+- validation checks
+- admin manual adjustment tools
+- clear user messaging
 
 ---
 
