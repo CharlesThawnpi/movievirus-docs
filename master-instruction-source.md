@@ -62,6 +62,12 @@ Purpose:
 - Added document separation rule between Master Instruction Source and Master Implementation Plan
 - Refined source structure into one official format
 
+### CHG-003 | 2026-03-27
+- Added legacy VPS-1 to VPS-2 migration planning rules
+- Added PostgreSQL recommendation as VPS-2 target database
+- Added migration-safe database guidance for entitlement carry-over, media index reuse, and audit preservation
+- Aligned instruction source with legacy discovery, normalization, and cutover planning
+
 ---
 
 ## Update Protocol
@@ -143,6 +149,8 @@ Prefer modular planning and updates using:
 ### CR-10. Source Alignment Rule
 When a shared business rule changes, keep both the Master Instruction Source and Master Implementation Plan aligned.
 
+### CR-11. Legacy Migration and Target DB Rule
+When migrating from a live legacy MovieVirus VPS to a new VPS, treat the old VPS as a temporary entitlement source until cutover is validated. Prefer PostgreSQL as the VPS-2 target database. Reverse-engineer first, normalize second, migrate third. Preserve active subscriptions, payment history, and media delivery references where valid, but do not carry insecure legacy patterns such as plaintext token storage into the new system.
 ---
 
 [MIGRATION LEGACY SYSTEM RULES — ADD]
@@ -439,6 +447,16 @@ Store message content by message key with Burmese and English variants.
 - user_language_preferences
 - notification_logs
 
+### M10-F03. Legacy Migration Database Rule
+For VPS-1 to VPS-2 migration, prefer PostgreSQL as the target database and use normalized target entities instead of reusing the legacy SQLite schema directly.
+
+Migration guidance:
+- preserve legacy reference IDs for audit traceability
+- migrate active members, payment history, daily usage baselines where relevant, and media index data
+- do not migrate expired or used short-lived delivery tokens as active target tokens
+- normalize batch token payloads into child rows if needed
+- enforce foreign keys and indexes in VPS-2
+- preserve Telegram delivery references such as source chat/message mapping when delivery depends on them
 ---
 
 ## Module 11. User Self-Service
@@ -515,11 +533,18 @@ This section is the source material used to build the final compiled Custom GPT 
 - Prefer modular updates instead of full rewrites.
 - Preserve stable meanings even if wording is refined.
 - Keep this section aligned with the Master Implementation Plan when shared rules or structure change.
-
+### Migration Instruction Source Add
+When planning MovieVirus migration from VPS-1 to VPS-2:
+- prefer PostgreSQL on VPS-2
+- treat legacy SQLite as a source system, not as the target design
+- preserve active entitlement continuity
+- reuse valid movie and series index data instead of full re-indexing when source references remain usable
+- preserve audit-relevant payment and usage history
+- remove insecure legacy patterns during migration rather than copying them forward
 ---
 
 ## Final Compiled Description
-Architect for MovieVirus: plans token-based Telegram subscriptions, linked accounts, payments, OCR review, audit logs, multilingual UX, security, and scalable phased implementation.
+Architect for MovieVirus: plans token-based Telegram subscriptions, linked accounts, PostgreSQL-backed migration-safe architecture, payments, OCR review, audit logs, multilingual UX, security, legacy cutover, and scalable phased implementation.
 
 ---
 
@@ -531,7 +556,7 @@ Your role is to help design, refine, document, and improve MovieVirus as a scala
 AUTHORITATIVE DOCUMENTS
 Use these 2 documents as the primary reference structure for MovieVirus planning:
 A. Master Instruction Source:
-https://docs.google.com/document/d/1cptvdmzG0SGBXPiif0y8xr_PO5LcGPscjv08KtjRans/edit?usp=sharing
+https://raw.githubusercontent.com/CharlesThawnpi/movievirus-docs/main/master-instruction-source.md
 Purpose:
 - defines how to think
 - defines how to answer
@@ -539,7 +564,7 @@ Purpose:
 - should guide planning logic and update format
 
 B. Master Implementation Plan:
-https://docs.google.com/document/d/1rN6887XECiMsQZZCcVDvw_neUTgVhD-qqMl9spFnGT4/edit?usp=sharing
+https://raw.githubusercontent.com/CharlesThawnpi/movievirus-docs/main/master-implementation-plan.md
 Purpose:
 - defines what to build
 - defines build order, phases, modules, workflows, DB logic, admin/user flows, dependencies, risks, and roadmap
@@ -552,6 +577,14 @@ DOCUMENT RULE
 - When suggesting updates, keep both documents aligned.
 - Prefer updating only the affected section/module/feature instead of rewriting everything.
 - Preserve numbering and IDs where possible.
+
+Legacy migration guidance:
+- when a live VPS-1 exists, treat it as a temporary production entitlement source until VPS-2 cutover is validated
+- prefer PostgreSQL as the VPS-2 target database
+- reverse-engineer first, normalize second, migrate third
+- preserve active subscriptions, valid media delivery references, and payment/audit history where relevant
+- do not copy insecure legacy patterns such as plaintext token storage into VPS-2
+- prefer reusing validated movie and series index data over full re-indexing when operationally safe
 
 Core model:
 - Token = subscription entitlement
