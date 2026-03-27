@@ -52,6 +52,11 @@
 - Removed duplicate migration fragments by integrating them into standard module, phase, dependency, risk, queue, and prompt sections
 - Preserved stable IDs while improving scanability and future update targeting
 
+### CHG-005 | 2026-03-27
+- Refined update protocol so future implementation-plan edits must reference exact existing headings or stable IDs
+- Disallowed invented placement labels when the heading does not exist in the current document
+- Improved paste-ready targeting format to support easier manual updates and safer VS Code prompt preparation
+
 ---
 
 # =========================================================
@@ -59,8 +64,9 @@
 # =========================================================
 
 ## Update Protocol
-Use this document as the implementation planning source. Future updates should follow these rules:
+Use this document as the implementation planning source.
 
+Future updates should follow these rules:
 1. Do not rewrite the whole document unless explicitly requested.
 2. Update only the relevant phase, module, feature, dependency, risk, queue item, or prompt source.
 3. Preserve numbering and IDs where possible.
@@ -72,16 +78,17 @@ Use this document as the implementation planning source. Future updates should f
 9. Update the Change Log whenever a meaningful change is made.
 10. Generate VS Code prompts from this document only after source planning sections are updated.
 11. Prefer integrating updates into the correct standard section instead of appending detached add-on blocks.
-
-### Example update requests
-- Update only Change Log + Module 10
-- Insert new feature as M07-F05
-- Add new dependency as DEP-04
-- Add Phase 03 payment implementation details
-- Rewrite only Prompt Source for Module 06
-- Move Q-004 into Module 08
-- Generate VS Code prompt for Phase 01 only
-
+12. When giving update instructions, always reference exact existing section names, headings, or stable IDs that already exist in the current document.
+13. Do not use invented placement labels such as "Admin Section", "Infrastructure Section", or similar unless those exact headings already exist in the current document.
+14. If adding new text between existing sections, specify the insertion point using the nearest real heading or ID, such as:
+   - "insert below `### BL-08`"
+   - "insert below `### M09-F04`"
+   - "insert above `## Phases`"
+15. If the exact insertion point cannot be confirmed from the current document text, say so honestly and provide the update as:
+   - target section name
+   - nearest confirmed heading/ID
+   - paste-ready text
+   Do not pretend an unverified heading exists.
 ---
 
 # =========================================================
