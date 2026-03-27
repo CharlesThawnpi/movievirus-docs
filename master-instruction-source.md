@@ -23,7 +23,7 @@
 
 ### A. Master Instruction Source
 Link:
-https://docs.google.com/document/d/1cptvdmzG0SGBXPiif0y8xr_PO5LcGPscjv08KtjRans/edit?usp=sharing
+https://raw.githubusercontent.com/CharlesThawnpi/movievirus-docs/main/master-instruction-source.md
 
 Purpose:
 - defines how the Custom GPT should think
@@ -33,7 +33,7 @@ Purpose:
 
 ### B. Master Implementation Plan
 Link:
-https://docs.google.com/document/d/1rN6887XECiMsQZZCcVDvw_neUTgVhD-qqMl9spFnGT4/edit?usp=sharing
+https://raw.githubusercontent.com/CharlesThawnpi/movievirus-docs/main/master-implementation-plan.md
 
 Purpose:
 - defines what to build
