@@ -151,6 +151,29 @@ When a shared business rule changes, keep both the Master Instruction Source and
 
 ### CR-11. Legacy Migration and Target DB Rule
 When migrating from a live legacy MovieVirus VPS to a new VPS, treat the old VPS as a temporary entitlement source until cutover is validated. Prefer PostgreSQL as the VPS-2 target database. Reverse-engineer first, normalize second, migrate third. Preserve active subscriptions, payment history, and media delivery references where valid, but do not carry insecure legacy patterns such as plaintext token storage into the new system.
+
+CR-12: VPS Naming & Environment Abstraction Rule
+- Terms such as "VPS-1" and "VPS-2" are human-friendly labels used by the system owner for operational clarity only.
+- These labels MUST NOT be used in code, configuration logic, database fields, or environment-dependent conditions.
+- All infrastructure references must use environment-based or role-based identifiers such as:
+  - ENV=production / staging
+  - SERVER_ROLE=api / worker / bot / db
+  - HOST identifiers or IP-based configs
+- The system must remain deployment-agnostic and portable across servers.
+- Any VS Code prompts, scripts, or implementation instructions must NOT assume awareness of "VPS-1" or "VPS-2".
+
+CR-13: WebApp as Primary Management Layer
+- All user/member management MUST be handled via the WebApp (Admin Panel / Backend System).
+- Telegram MUST NOT be used as the source of truth for:
+  - user plans
+  - quota
+  - linked accounts
+  - token lifecycle
+- Telegram acts strictly as:
+  - request interface
+  - delivery interface
+  - validation entry point
+- All enforcement logic must be validated against backend/database, not Telegram session state.
 ---
 
 [MIGRATION LEGACY SYSTEM RULES — ADD]
