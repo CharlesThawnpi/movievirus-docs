@@ -77,6 +77,15 @@
 - Defined duplicate request protection window (30–60 seconds)
 - Simplified admin model for Phase 1
 
+### CHG-011 | 2026-03-27
+- Introduced full backend API layer design
+- Defined endpoint groups and responsibilities
+- Implemented indirect file delivery via secondary bot
+- Added duplicate protection logic
+- Added retry and failure handling rules
+- Added API enforcement dependency
+- Added redirect payload security risk
+
 ---
 
 # =========================================================
@@ -502,8 +511,25 @@ Migration-related reporting should preserve:
 - approve/reject
 - activate token after approval
 
-### M07-F03. OCR Rule
-Use OCR as review assistance, not full auto-approval in phase 1.
+### M07-F03. Backend API Layer (Core Design)
+
+System must use a centralized backend API as the single source of truth.
+
+All critical logic must be handled by backend:
+- token validation
+- quota enforcement
+- daily cap checks
+- linked account logic
+- payment activation
+- request logging
+- duplicate protection
+
+Clients:
+- Telegram Bot (user-facing)
+- WebApp (admin-facing)
+
+Bot MUST NOT enforce business rules independently.
+
 
 ### M07-F04. Payment Statuses
 - Pending
@@ -513,6 +539,147 @@ Use OCR as review assistance, not full auto-approval in phase 1.
 - Rejected
 - Refunded
 - Expired Pending
+
+#### 1. Auth / System
+- POST /internal/auth/verify-service-key
+
+#### 2. Token & Access
+- POST /token/validate-and-link
+- POST /token/validate-linked
+- GET /token/status
+
+#### 3. File Request Flow
+- POST /request/validate
+- POST /request/commit-success
+- POST /request/commit-failure
+
+#### 4. Search
+- GET /search/files
+- GET /search/details
+
+#### 5. Payment
+- POST /payment/submit
+- POST /payment/approve
+- POST /payment/reject
+
+#### 6. Admin (WebApp)
+- POST /admin/token/create
+- POST /admin/token/update
+- POST /admin/token/revoke
+- POST /admin/token/adjust-quota
+- GET /admin/token/logs
+- GET /admin/payment/list
+
+### M07-F05. Request Flow via API
+
+1. User selects file
+
+2. Bot calls:
+POST /request/validate
+
+Backend checks:
+- token status
+- expiry
+- quota
+- daily cap
+- linked account
+
+Response:
+- approved / denied
+- denial reason (if any)
+
+3. IF approved:
+Bot sends "Download via ..." link
+
+4. User clicks link → redirected to delivery bot
+
+5. Delivery bot sends file with:
+- expiration timer (3 minutes)
+- auto-delete after timeout
+
+6. After successful send:
+Bot calls:
+POST /request/commit-success
+
+7. If send fails after 3 retries:
+Bot calls:
+POST /request/commit-failure
+→ backend logs
+→ admin notified
+
+### M07-F06. Secure File Delivery Design
+
+File delivery must use indirect method to reduce Telegram bot ban risk.
+
+Flow:
+- primary bot does NOT send file directly
+- primary bot sends:
+   "Download via ..." button
+
+Button contains:
+- signed payload (token_id + request_id + expiry)
+
+User is redirected to:
+- secondary delivery bot
+
+Delivery bot:
+- validates payload via backend
+- sends file
+- enforces:
+   - max 3-minute availability
+   - auto-delete after timeout
+
+Purpose:
+- distribute risk across bots
+- reduce ban probability
+- maintain controlled access
+
+### M07-F07. Duplicate Protection
+
+Definition:
+- duplicate request = same token + same telegram_user_id + same file within 30–60 seconds
+
+Backend must:
+- generate duplicate_guard_key
+- reject duplicate with status:
+   duplicate_ignored
+
+Bot must:
+- show user message explaining duplicate protection
+- NOT deduct quota
+
+### M07-F08. Linked Account Replacement via API
+
+When new user links and limit is reached:
+
+Backend must:
+- identify oldest linked account (linked_at ASC)
+- mark old account as replaced
+- create new link
+
+Response must include:
+- replacement_flag = true
+- replaced_account_info
+
+Bot must:
+- notify new user
+- optionally notify removed user (if reachable)
+
+### M07-F09. Retry & Failure Handling
+
+Bot must:
+- retry file send up to 3 times
+
+If all fail:
+- call /request/commit-failure
+
+Backend must:
+- log failure
+- NOT deduct quota
+- trigger admin notification
+
+User must receive:
+- clear status message
 
 ---
 
@@ -1427,6 +1594,16 @@ Required before authoritative member management, payment review, quota adjustmen
 
 ### DEP-12. Atomic Entitlement Transaction Layer
 Required before production release so quota deduction, daily counter update, and usage logging succeed or fail together. This prevents double deduction, partial writes, and quota drift under concurrent requests.
+
+### DEP-13. Backend API Enforcement Layer
+
+All business rules must be enforced via backend API.
+
+Bot and WebApp must act as clients only.
+
+Required before:
+- production deployment
+- multi-bot setup
 ---
 
 # =========================================================
@@ -1547,6 +1724,16 @@ Description:
 Mitigation:
 - clear notification message on replacement
 - optional future: replacement history view in WebApp
+
+### RSK-13. Redirect Payload Abuse Risk
+
+Description:
+- users may attempt to reuse or tamper with download links
+
+Mitigation:
+- signed payload with expiry
+- one-time or short-lived token validation
+- backend verification before file delivery
 ---
 
 # =========================================================
