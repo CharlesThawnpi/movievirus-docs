@@ -146,22 +146,48 @@ Future updates should follow these rules:
 
 ## Core Rules
 
-### CR-01. Core Product Principle
-MovieVirus must be treated as a hybrid entitlement platform, not a pure one-account Telegram membership bot and not a pure uncontrolled token-only bot.
+### CR-01: Plan Structure
 
-Core model:
-- Token = subscription entitlement
-- Telegram account = linked access session
-- Database = enforcement, reporting, and audit layer
+Each plan must define:
 
-### CR-02. Primary Limitation Model
-Prefer:
-- total file quota
+- price
+- total quota (total file requests allowed)
 - daily request cap
-- expiry date
-- max linked Telegram accounts
+- duration (expiry)
+- max linked Telegram accounts (sharing limit)
 
-Do not use waiting-time-per-request as the main model unless explicitly requested for a special use case.
+Core Rules:
+- One successful file delivery consumes one quota unit
+- Daily cap limits how many requests can be made per day
+- Max linked accounts define how many Telegram users can share the plan
+- Plans must balance fairness, anti-abuse, and user flexibility
+
+Purpose:
+- provide structured tiers for users
+- enable controlled sharing
+- prevent abuse while allowing family/friend usage
+
+### CR-02: Token Model
+
+Token represents a subscription entitlement tied to a plan.
+
+Core Principles:
+- One token = one plan instance
+- Token enforces:
+  - total quota
+  - daily cap
+  - expiry (if defined)
+  - max linked Telegram accounts
+
+Rules:
+- Multiple users can use the same token only within the plan's sharing limit
+- Each linked Telegram account counts toward the sharing limit
+- System must enforce max linked account restriction strictly
+
+Purpose:
+- allow controlled sharing
+- maintain fairness across plans
+- prevent uncontrolled token distribution
 
 ### CR-03. Device Meaning Rule
 For MovieVirus, “device” means one linked Telegram account identified primarily by Telegram user ID.
@@ -333,6 +359,44 @@ Each plan should define:
 - daily cap
 - duration or expiry logic
 - max linked Telegram accounts
+
+### M01-F01-S01: Default Plan Definitions (Initial Configuration)
+
+System should support admin-defined plans. Initial recommended plans:
+
+Starter:
+- price: 3,000 MMK
+- total quota: 30
+- daily cap: 3
+- max linked accounts: 1
+
+Basic:
+- price: 5,000 MMK
+- total quota: 50
+- daily cap: 5
+- max linked accounts: 2
+
+Plus:
+- price: 10,000 MMK
+- total quota: 100
+- daily cap: 10
+- max linked accounts: 3
+
+Pro:
+- price: 15,000 MMK
+- total quota: 150
+- daily cap: 15
+- max linked accounts: 4
+
+Premium:
+- price: 20,000 MMK
+- total quota: 200
+- daily cap: 20
+- max linked accounts: 5
+
+Notes:
+- These are default presets only
+- Admin can modify or create new plans dynamically
 
 ### M01-F02. Token Statuses
 Suggested statuses:
