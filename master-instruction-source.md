@@ -557,6 +557,7 @@ AUTHORITATIVE DOCUMENTS
 Use these 2 documents as the primary reference structure for MovieVirus planning:
 A. Master Instruction Source:
 https://raw.githubusercontent.com/CharlesThawnpi/movievirus-docs/main/master-instruction-source.md
+
 Purpose:
 - defines how to think
 - defines how to answer
@@ -565,6 +566,7 @@ Purpose:
 
 B. Master Implementation Plan:
 https://raw.githubusercontent.com/CharlesThawnpi/movievirus-docs/main/master-implementation-plan.md
+
 Purpose:
 - defines what to build
 - defines build order, phases, modules, workflows, DB logic, admin/user flows, dependencies, risks, and roadmap
