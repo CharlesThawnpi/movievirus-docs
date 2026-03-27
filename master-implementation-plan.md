@@ -91,6 +91,12 @@
 - Defined search, access validation, request validation, delivery verification, commit, payment, and admin endpoints
 - Added signed delivery payload dependency for indirect multi-bot file delivery
 - Added replay/tamper risk coverage for short-lived delivery payloads
+
+### CHG-012 | 2026-03-27
+- Added Node.js backend implementation blueprint
+- Defined project structure and module responsibilities
+- Defined transaction logic and middleware layer
+- Added Phase 1 build order and constraints
 ---
 
 # =========================================================
@@ -2162,6 +2168,208 @@ Modules:
 - part of M06
 - part of M09
 - part of M10
+
+## Module 15. Backend Implementation Blueprint (Node.js)
+
+### M15-F01. Tech Stack
+
+- Runtime: Node.js (LTS)
+- Framework: Express.js (or Fastify optional)
+- Database: PostgreSQL
+- ORM/Query: Prisma (recommended) or Knex
+- Auth: Service key (internal), session (admin)
+- Deployment: VPS (VPS-1 → VPS-2 migration ready)
+
+---
+
+### M15-F02. Project Structure
+
+Recommended structure:
+
+/src
+  /config
+  /db
+  /modules
+    /auth
+    /token
+    /request
+    /delivery
+    /payment
+    /admin
+    /search
+  /middleware
+  /utils
+  /jobs
+  /routes
+  app.js
+
+---
+
+### M15-F03. Module Responsibilities
+
+auth:
+- service key validation
+- request authentication
+
+token:
+- token validation
+- linking logic
+- expiry checks
+
+request:
+- request validation
+- duplicate protection
+- commit success/failure
+
+delivery:
+- payload signing/verification
+- delivery validation
+
+payment:
+- telegram stars webhook
+- manual payment handling
+
+admin:
+- plan management
+- token management
+- logs
+
+search:
+- file search + metadata
+
+---
+
+### M15-F04. Controller → Service Flow
+
+Example:
+
+POST /api/v1/requests/validate
+
+Flow:
+- request.controller
+- request.service.validateRequest()
+- token.service.checkLinkedUser()
+- quota.service.checkQuota()
+- duplicate.service.checkDuplicate()
+- return response
+
+---
+
+### M15-F05. Critical Transaction Logic
+
+Commit success must be atomic:
+
+Within single DB transaction:
+1. insert usage log
+2. decrement token quota
+3. update daily_usage_counters
+
+If any step fails:
+- rollback entire transaction
+
+---
+
+### M15-F06. Middleware Layer
+
+Required middleware:
+
+- serviceAuthMiddleware
+- requestLoggerMiddleware
+- errorHandlerMiddleware
+- rateLimiter (basic)
+- validationMiddleware (schema-based)
+
+---
+
+### M15-F07. Delivery Payload System
+
+- use signed payload (JWT or HMAC)
+- include:
+   - request_id
+   - token_id
+   - expiry timestamp
+
+Rules:
+- short-lived (≤ 3 minutes)
+- validated by backend before delivery
+- one-time or guarded use
+
+---
+
+### M15-F08. Retry & Job Handling
+
+- retry delivery up to 3 times
+- use simple retry loop (Phase 1)
+- optional future:
+   - queue system (BullMQ)
+
+Admin notification trigger:
+- send failure
+- abnormal error
+
+---
+
+### M15-F09. Logging Strategy
+
+Log types:
+
+- request logs
+- token verification logs
+- payment logs
+- admin logs
+- error logs
+
+Rules:
+- do not overwrite logs
+- append-only for audit-critical logs
+
+---
+
+### M15-F10. Environment Config
+
+.env structure:
+
+- DATABASE_URL=
+- SERVICE_KEY_PRIMARY_BOT=
+- SERVICE_KEY_DELIVERY_BOT=
+- SERVICE_KEY_WEBAPP=
+- JWT_SECRET=
+- TOKEN_HASH_SECRET=
+- APP_ENV=production/staging
+
+---
+
+### M15-F11. Phase 1 Build Order
+
+1. Setup project + DB connection
+2. Implement auth middleware
+3. Implement token validation module
+4. Implement request validation
+5. Implement commit success logic
+6. Implement delivery payload system
+7. Implement search endpoints
+8. Implement payment endpoints
+9. Implement admin endpoints
+10. Add logging + error handling
+
+---
+
+### M15-F12. Phase 1 Constraints
+
+- single server (no microservices)
+- no queue system required initially
+- no caching layer required initially
+- keep logic centralized
+
+---
+
+### M15-F13. Future Expansion Ready
+
+- queue system (BullMQ)
+- Redis caching
+- multi-instance scaling
+- load balancer
+- analytics dashboard
 
 ---
 
