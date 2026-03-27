@@ -109,6 +109,13 @@
 - Introduced plan assignment logic
 - Added migration validation steps
 - Added risk for incorrect plan mapping
+
+### CHG-015 | 2026-03-27
+- Added detailed migration script plan under Module 13
+- Defined staged migration runner structure for Node.js
+- Added adapter-based legacy mapping approach
+- Added quota reconciliation, linked-account migration, and delivery-reference migration rules
+- Added required migration reporting outputs for cutover readiness
 ---
 
 # =========================================================
@@ -1459,6 +1466,245 @@ Verify:
 - linked-account enforcement
 - quota and daily-cap correctness
 - rollback readiness before final legacy shutdown
+
+### M13-F07. Migration Script Plan
+
+Purpose:
+- move legacy VPS-1 data into the new PostgreSQL schema safely
+- preserve entitlement continuity without copying insecure or obsolete legacy patterns directly
+
+Core Script Design:
+- use a one-time Node.js migration runner
+- connect to:
+  - legacy source database (read-only)
+  - new PostgreSQL target database
+- run in staged mode:
+  1. discover
+  2. extract
+  3. normalize
+  4. map
+  5. load
+  6. reconcile
+  7. report
+
+Rules:
+- legacy source must remain read-only during migration runs
+- target import must be repeatable in staging
+- production migration must be logged as a named migration run
+- never overwrite legacy data in place
+- do not carry plaintext token storage into the new system
+
+---
+
+### M13-F08. Migration Script Structure
+
+Recommended script structure:
+
+1. `migration.config`
+- source DB connection
+- target DB connection
+- run mode: dry_run / staging_import / production_import
+- batch size
+- logging path
+
+2. `discoverLegacySchema`
+- inspect legacy tables
+- detect missing/extra columns
+- record legacy schema snapshot for audit
+
+3. `extractLegacyData`
+- export required source datasets
+- tokens
+- members/users
+- linked-account-like data
+- request history
+- payment history
+- delivery references where needed
+
+4. `normalizeLegacyData`
+- clean null/invalid values
+- normalize enums
+- remove exact duplicates where safe
+- mark orphaned rows for rejection log
+- standardize timestamps and plan references
+
+5. `mapToTargetShape`
+- transform legacy rows into target insert objects
+- preserve legacy IDs in mapping/audit fields where available
+- generate derived fields required by target schema
+
+6. `loadTargetData`
+- insert in controlled order:
+  - plans (if seed check required)
+  - members
+  - tokens
+  - member_tokens
+  - token_linked_accounts
+  - token_usage_logs
+  - payment_transactions
+  - payment_review_logs (if migrated)
+  - token_account_change_logs / quota_adjustment_logs where needed
+- use transactions per batch where safe
+
+7. `rebuildDerivedData`
+- recompute daily_usage_counters from successful usage logs
+- recompute token status where needed
+- verify expiry and exhausted states
+
+8. `reconcileResults`
+- compare source vs target counts
+- compare quota math
+- compare payment visibility
+- compare sample delivery references
+
+9. `writeMigrationReport`
+- total rows processed
+- total inserted
+- total skipped
+- rejection reasons
+- warnings
+- final pass/fail recommendation
+
+---
+
+### M13-F09. Data Classification for Script Execution
+
+MUST migrate:
+- active tokens / active entitlement state
+- plan-equivalent entitlement values
+- linked Telegram account state where valid
+- successful request history needed for quota correctness
+- payment records
+- delivery reference data required for ongoing delivery integrity
+
+SHOULD migrate:
+- member profile fields
+- historical failed request logs if operationally useful
+- review/audit context if available and clean
+
+DISCARD or REBUILD:
+- expired short-lived delivery payloads
+- transient request placeholders
+- broken orphan rows that cannot be repaired safely
+- insecure legacy-only helper data not needed in target system
+
+---
+
+### M13-F10. Migration Batch and Idempotency Rules
+
+Rules:
+- migration must support dry-run mode
+- each migration run must have unique run ID
+- each imported row group must be traceable to that run ID
+- rerun safety must be explicit:
+  - either truncate/rebuild staging target
+  - or use import markers to avoid duplicate inserts
+- production import must not double-create tokens, payments, or usage logs
+
+Recommended approach:
+- staging: allow full reset and rerun
+- production: use mapping tables and unique legacy-origin references
+
+---
+
+### M13-F11. Legacy-to-Target Mapping Adapters
+
+Because legacy schema may differ from the new target design, script must use adapter-based mapping.
+
+Recommended adapters:
+- `tokenAdapter`
+- `memberAdapter`
+- `linkedAccountAdapter`
+- `usageLogAdapter`
+- `paymentAdapter`
+- `deliveryReferenceAdapter`
+
+Purpose:
+- isolate legacy-specific mapping logic
+- make migration safer if old VPS structure is inconsistent
+- avoid mixing raw legacy assumptions directly into target insert logic
+
+---
+
+### M13-F12. Quota Reconciliation Logic
+
+Quota correctness must be validated per token.
+
+Required check:
+- `total_quota_initial - successful_delivered_requests +/- manual_adjustments = total_quota_remaining`
+
+Rules:
+- if reconciliation fails, token must be flagged for admin review
+- migration must not silently force balances to fit
+- unresolved mismatches must appear in migration report
+
+Success criteria:
+- migrated remaining quota matches historical usage and adjustments
+- exhausted tokens are marked correctly
+- active tokens remain usable after cutover
+
+---
+
+### M13-F13. Linked Account Migration Rules
+
+Rules:
+- preserve valid linked Telegram accounts where confidently known
+- deduplicate repeated rows by token + telegram_user_id
+- if migrated linked-account count exceeds target max_linked_accounts:
+  - do not silently drop rows
+  - import with review flag or controlled trimming policy defined before production import
+- preserve oldest-known linkage timing where possible for later replacement logic
+
+If legacy linked-account ownership is unclear:
+- migrate owner/member relationship separately from token_linked_accounts
+- do not invent same-person assumptions
+
+---
+
+### M13-F14. Delivery Reference Migration Rules
+
+If delivery depends on inherited Telegram source references:
+- migrate source chat/message identifiers needed by delivery bot logic
+- sample-verify media delivery integrity before cutover
+- isolate broken references into rejection/report tables instead of importing blindly
+
+Rules:
+- broken delivery references must not block the entire migration run
+- but must block final cutover if they affect active entitlement fulfillment materially
+
+---
+
+### M13-F15. Production Migration Execution Order
+
+Recommended order:
+
+1. create immutable VPS-1 backup
+2. run staging discovery
+3. run staging dry-run migration
+4. review rejection report and quota reconciliation
+5. fix adapters or mapping rules
+6. rerun staging until clean enough
+7. freeze legacy writes or reduce to controlled read-only window
+8. take final delta backup/export
+9. run production migration
+10. run post-cutover verification
+11. switch traffic to new backend
+12. keep rollback-safe legacy window until confidence threshold is met
+
+---
+
+### M13-F16. Required Migration Outputs
+
+The migration process must produce:
+
+- migration run summary
+- row-count comparison report
+- rejection report
+- quota reconciliation report
+- linked-account exception report
+- payment import report
+- delivery reference validation report
+- final go / no-go cutover recommendation
 
 ## Module 14. Backend API Contracts
 
