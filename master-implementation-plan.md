@@ -57,6 +57,12 @@
 - Disallowed invented placement labels when the heading does not exist in the current document
 - Improved paste-ready targeting format to support easier manual updates and safer VS Code prompt preparation
 
+### CHG-006 | 2026-03-27
+- Defined structured plan tiers with quota, daily cap, and sharing limits
+- Introduced controlled sharing model via max linked accounts
+- Added initial plan seed configuration
+- Strengthened enforcement rules for linked accounts
+
 ---
 
 # =========================================================
@@ -240,6 +246,47 @@ Define:
 - duration
 - max linked accounts
 
+### M01-F01-S01: Plan Configuration (Initial Seed Data)
+
+System must allow dynamic plan creation via WebApp.
+
+Initial seed plans:
+
+Starter:
+- price: 3000
+- total_quota: 30
+- daily_cap: 3
+- max_linked_accounts: 1
+
+Basic:
+- price: 5000
+- total_quota: 50
+- daily_cap: 5
+- max_linked_accounts: 2
+
+Plus:
+- price: 10000
+- total_quota: 100
+- daily_cap: 10
+- max_linked_accounts: 3
+
+Pro:
+- price: 15000
+- total_quota: 150
+- daily_cap: 15
+- max_linked_accounts: 4
+
+Premium:
+- price: 20000
+- total_quota: 200
+- daily_cap: 20
+- max_linked_accounts: 5
+
+Requirements:
+- plans stored in database
+- editable via admin panel
+- no hardcoding in bot logic
+
 ### M01-F02. Token Statuses
 Suggested statuses:
 - Active
@@ -353,6 +400,14 @@ Allow one-time short-lived transfer code from current linked account to a new ac
 ## Module 06. Reporting, History, and Audit
 
 ### M06-F01. Admin Reporting
+
+Enforcement Update:
+- max_linked_accounts must be strictly enforced
+- IF limit reached:
+   - deny new account linking
+   - provide clear error message
+- linking does NOT consume quota
+  
 Admin should be able to inspect:
 - payment history
 - request history
