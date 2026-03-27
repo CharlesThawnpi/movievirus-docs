@@ -63,6 +63,12 @@
 - Added initial plan seed configuration
 - Strengthened enforcement rules for linked accounts
 
+### CHG-007 | 2026-03-27
+- Expanded Module 10 from entity list into final Phase-1 PostgreSQL schema blueprint
+- Added concrete table structure for plans, tokens, members, linked accounts, usage, payments, audit, and admin control
+- Added atomic entitlement transaction dependency
+- Added concurrency risk and mitigation for quota correctness
+
 ---
 
 # =========================================================
@@ -566,6 +572,562 @@ Before import:
 - normalize enums and plan references
 - enforce target-side foreign keys and indexes
 
+### M10-F06. Final Phase-1 PostgreSQL Schema Blueprint
+
+Use PostgreSQL as the production target database.
+
+Schema design goals:
+- backend/database as source of truth
+- WebApp-driven member/admin management
+- secure token handling
+- controlled sharing via max linked accounts
+- traceable quota, payment, and admin actions
+- migration-safe and audit-friendly structure
+
+Recommended table groups:
+- plan and entitlement tables
+- linked-account and quota enforcement tables
+- payment and review tables
+- audit and support tables
+- optional content/localization tables
+
+### M10-F07. Core Plan and Entitlement Tables
+
+#### Table: plans
+Purpose:
+- stores admin-configurable subscription plans
+
+Fields:
+- id (uuid, pk)
+- code (varchar, unique, not null)  
+  Example: STARTER, BASIC, PLUS
+- name (varchar, not null)
+- description (text, nullable)
+- price_mmk (integer, not null)
+- price_stars (integer, nullable)
+- total_quota (integer, not null)
+- daily_cap (integer, not null)
+- duration_days (integer, not null)
+- max_linked_accounts (integer, not null)
+- is_active (boolean, default true)
+- sort_order (integer, default 0)
+- created_at (timestamptz, not null)
+- updated_at (timestamptz, not null)
+
+Constraints:
+- total_quota > 0
+- daily_cap > 0
+- max_linked_accounts >= 1
+- duration_days > 0
+
+Indexes:
+- unique(code)
+- index(is_active, sort_order)
+
+#### Table: tokens
+Purpose:
+- stores one subscription entitlement instance per token
+
+Fields:
+- id (uuid, pk)
+- plan_id (uuid, fk -> plans.id, not null)
+- token_hash (varchar, unique, not null)
+- token_masked (varchar, not null)
+- status (varchar, not null)
+- activated_at (timestamptz, nullable)
+- expires_at (timestamptz, nullable)
+- total_quota_initial (integer, not null)
+- total_quota_remaining (integer, not null)
+- daily_cap_snapshot (integer, not null)
+- max_linked_accounts_snapshot (integer, not null)
+- price_mmk_snapshot (integer, not null)
+- price_stars_snapshot (integer, nullable)
+- source_payment_transaction_id (uuid, nullable, fk -> payment_transactions.id)
+- notes (text, nullable)
+- created_at (timestamptz, not null)
+- updated_at (timestamptz, not null)
+
+Status values:
+- pending_activation
+- active
+- expired
+- suspended
+- revoked
+- exhausted
+
+Rules:
+- store hash only, never plaintext token
+- snapshots preserve historical truth even if plan changes later
+- token becomes exhausted when total_quota_remaining <= 0
+
+Indexes:
+- unique(token_hash)
+- index(plan_id)
+- index(status)
+- index(expires_at)
+
+#### Table: members
+Purpose:
+- optional purchaser/member profile managed from WebApp
+- separates customer/support identity from Telegram account rows
+
+Fields:
+- id (uuid, pk)
+- display_name (varchar, nullable)
+- phone_number (varchar, nullable)
+- email (varchar, nullable)
+- default_language (varchar, default 'my')
+- status (varchar, not null, default 'active')
+- notes (text, nullable)
+- created_at (timestamptz, not null)
+- updated_at (timestamptz, not null)
+
+Status values:
+- active
+- suspended
+- archived
+
+Indexes:
+- index(status)
+- index(phone_number)
+- index(email)
+
+#### Table: member_tokens
+Purpose:
+- links purchaser/member profile to owned token(s) for WebApp support visibility
+- does not replace token-linked-account enforcement
+
+Fields:
+- id (uuid, pk)
+- member_id (uuid, fk -> members.id, not null)
+- token_id (uuid, fk -> tokens.id, not null)
+- relationship_type (varchar, not null, default 'owner')
+- is_primary (boolean, default true)
+- linked_at (timestamptz, not null)
+- created_at (timestamptz, not null)
+
+Relationship types:
+- owner
+- assigned_by_admin
+- migrated_legacy_owner
+
+Indexes:
+- unique(member_id, token_id)
+- index(token_id)
+
+### M10-F08. Telegram Account and Quota Enforcement Tables
+
+#### Table: token_linked_accounts
+Purpose:
+- enforces controlled sharing by Telegram account slots
+
+Fields:
+- id (uuid, pk)
+- token_id (uuid, fk -> tokens.id, not null)
+- telegram_user_id (bigint, not null)
+- telegram_username (varchar, nullable)
+- telegram_first_name (varchar, nullable)
+- telegram_last_name (varchar, nullable)
+- link_status (varchar, not null, default 'active')
+- linked_at (timestamptz, not null)
+- last_used_at (timestamptz, nullable)
+- linked_by (varchar, not null, default 'auto')
+- replaced_at (timestamptz, nullable)
+- replacement_reason (text, nullable)
+- created_at (timestamptz, not null)
+- updated_at (timestamptz, not null)
+
+Link status values:
+- active
+- replaced
+- removed
+- blocked
+
+Rules:
+- one telegram_user_id may appear only once per token while active
+- active linked account count must not exceed token.max_linked_accounts_snapshot
+
+Indexes:
+- unique(token_id, telegram_user_id)
+- index(telegram_user_id)
+- index(token_id, link_status)
+
+#### Table: daily_usage_counters
+Purpose:
+- fast enforcement of per-token daily cap
+
+Fields:
+- id (uuid, pk)
+- token_id (uuid, fk -> tokens.id, not null)
+- usage_date (date, not null)
+- successful_requests_count (integer, not null, default 0)
+- created_at (timestamptz, not null)
+- updated_at (timestamptz, not null)
+
+Rules:
+- one row per token per day
+- reset is natural by new date row, not by destructive overwrite
+
+Indexes:
+- unique(token_id, usage_date)
+
+#### Table: token_usage_logs
+Purpose:
+- immutable request and delivery history
+
+Fields:
+- id (uuid, pk)
+- token_id (uuid, fk -> tokens.id, not null)
+- telegram_user_id (bigint, not null)
+- linked_account_id (uuid, nullable, fk -> token_linked_accounts.id)
+- request_key (varchar, not null)
+- media_ref_type (varchar, nullable)
+- media_ref_id (varchar, nullable)
+- source_chat_id (bigint, nullable)
+- source_message_id (bigint, nullable)
+- delivery_chat_id (bigint, nullable)
+- delivery_message_id (bigint, nullable)
+- request_status (varchar, not null)
+- quota_delta (integer, not null, default 0)
+- duplicate_guard_key (varchar, nullable)
+- failure_reason_code (varchar, nullable)
+- requested_at (timestamptz, not null)
+- delivered_at (timestamptz, nullable)
+- created_at (timestamptz, not null)
+
+Request status values:
+- requested
+- delivered
+- duplicate_ignored
+- validation_failed
+- file_not_found
+- send_failed
+- quota_restored
+
+Rules:
+- deduct quota only when request_status = delivered
+- failed validation, file not found, and send failure must use quota_delta = 0
+- duplicate protection should rely on duplicate_guard_key or equivalent safe window logic
+
+Indexes:
+- index(token_id, requested_at desc)
+- index(telegram_user_id, requested_at desc)
+- unique(duplicate_guard_key) where duplicate_guard_key is not null
+
+#### Table: token_verification_attempt_logs
+Purpose:
+- stores token verification attempts for security and support
+
+Fields:
+- id (uuid, pk)
+- supplied_token_hash (varchar, nullable)
+- matched_token_id (uuid, nullable, fk -> tokens.id)
+- telegram_user_id (bigint, nullable)
+- attempt_status (varchar, not null)
+- failure_reason_code (varchar, nullable)
+- source_context (varchar, not null, default 'telegram_bot')
+- attempted_at (timestamptz, not null)
+- ip_address (inet, nullable)
+- user_agent (text, nullable)
+- created_at (timestamptz, not null)
+
+Attempt status values:
+- success
+- invalid_token
+- expired
+- suspended
+- revoked
+- exhausted
+- linked_account_limit_reached
+- cooldown_blocked
+
+Indexes:
+- index(matched_token_id, attempted_at desc)
+- index(telegram_user_id, attempted_at desc)
+- index(attempt_status, attempted_at desc)
+
+### M10-F09. Payment, Review, and Plan Change Tables
+
+#### Table: payment_transactions
+Purpose:
+- stores Telegram Stars and local manual payments
+
+Fields:
+- id (uuid, pk)
+- member_id (uuid, nullable, fk -> members.id)
+- plan_id (uuid, nullable, fk -> plans.id)
+- payment_method (varchar, not null)
+- payment_status (varchar, not null)
+- amount_mmk (integer, nullable)
+- amount_stars (integer, nullable)
+- payer_reference (varchar, nullable)
+- external_reference (varchar, nullable)
+- screenshot_file_id (varchar, nullable)
+- submitted_at (timestamptz, nullable)
+- approved_at (timestamptz, nullable)
+- rejected_at (timestamptz, nullable)
+- approved_token_id (uuid, nullable, fk -> tokens.id)
+- rejection_reason (text, nullable)
+- created_at (timestamptz, not null)
+- updated_at (timestamptz, not null)
+
+Payment methods:
+- telegram_stars
+- local_manual
+
+Payment statuses:
+- pending
+- ocr_matched
+- ocr_uncertain
+- approved
+- rejected
+- refunded
+- expired_pending
+
+Indexes:
+- index(member_id)
+- index(plan_id)
+- index(payment_status)
+- index(payment_method)
+- index(created_at desc)
+
+#### Table: payment_review_logs
+Purpose:
+- immutable history of OCR and admin review actions
+
+Fields:
+- id (uuid, pk)
+- payment_transaction_id (uuid, fk -> payment_transactions.id, not null)
+- review_actor_type (varchar, not null)
+- review_actor_id (uuid, nullable)
+- review_step (varchar, not null)
+- review_outcome (varchar, not null)
+- review_notes (text, nullable)
+- ocr_summary_json (jsonb, nullable)
+- reviewed_at (timestamptz, not null)
+- created_at (timestamptz, not null)
+
+Review actor types:
+- system
+- admin
+
+Review steps:
+- ocr_precheck
+- manual_review
+- final_decision
+
+Indexes:
+- index(payment_transaction_id, reviewed_at desc)
+
+#### Table: subscription_plan_change_logs
+Purpose:
+- preserves upgrade/downgrade history and fairness adjustments
+
+Fields:
+- id (uuid, pk)
+- token_id (uuid, fk -> tokens.id, not null)
+- old_plan_id (uuid, nullable, fk -> plans.id)
+- new_plan_id (uuid, nullable, fk -> plans.id)
+- change_type (varchar, not null)
+- effective_at (timestamptz, not null)
+- requested_at (timestamptz, not null)
+- requested_by_admin_id (uuid, nullable)
+- quota_adjustment_delta (integer, nullable)
+- expiry_adjustment_days (integer, nullable)
+- notes (text, nullable)
+- created_at (timestamptz, not null)
+
+Change types:
+- initial_assignment
+- upgrade
+- downgrade_scheduled
+- renewal
+- migration_carryover
+- manual_correction
+
+Indexes:
+- index(token_id, effective_at desc)
+
+### M10-F10. Recovery, Audit, and Admin Tables
+
+#### Table: token_account_change_logs
+Purpose:
+- tracks account linking, replacement, removal, and resets
+
+Fields:
+- id (uuid, pk)
+- token_id (uuid, fk -> tokens.id, not null)
+- old_telegram_user_id (bigint, nullable)
+- new_telegram_user_id (bigint, nullable)
+- change_type (varchar, not null)
+- reason_code (varchar, nullable)
+- performed_by_type (varchar, not null)
+- performed_by_admin_id (uuid, nullable)
+- change_notes (text, nullable)
+- created_at (timestamptz, not null)
+
+Change types:
+- auto_link
+- manual_link
+- replace
+- remove
+- admin_reset
+- migration_import
+
+Indexes:
+- index(token_id, created_at desc)
+
+#### Table: quota_adjustment_logs
+Purpose:
+- records manual restores, bonus quota, or corrections separately from usage
+
+Fields:
+- id (uuid, pk)
+- token_id (uuid, fk -> tokens.id, not null)
+- adjustment_type (varchar, not null)
+- delta_quota (integer, not null)
+- before_remaining_quota (integer, not null)
+- after_remaining_quota (integer, not null)
+- reason_code (varchar, nullable)
+- notes (text, nullable)
+- performed_by_admin_id (uuid, nullable)
+- created_at (timestamptz, not null)
+
+Adjustment types:
+- restore
+- bonus
+- correction
+- migration_baseline
+
+Indexes:
+- index(token_id, created_at desc)
+
+#### Table: admin_users
+Purpose:
+- stores WebApp admin/operator identities
+
+Fields:
+- id (uuid, pk)
+- username (varchar, unique, not null)
+- display_name (varchar, not null)
+- role_code (varchar, not null)
+- status (varchar, not null, default 'active')
+- password_hash (varchar, not null)
+- last_login_at (timestamptz, nullable)
+- created_at (timestamptz, not null)
+- updated_at (timestamptz, not null)
+
+Role codes:
+- super_admin
+- finance_admin
+- support_admin
+- reviewer
+
+Indexes:
+- unique(username)
+- index(role_code, status)
+
+#### Table: admin_action_logs
+Purpose:
+- full audit trail for admin-side changes
+
+Fields:
+- id (uuid, pk)
+- admin_user_id (uuid, nullable, fk -> admin_users.id)
+- action_type (varchar, not null)
+- target_entity_type (varchar, not null)
+- target_entity_id (uuid, nullable)
+- action_summary (text, not null)
+- before_json (jsonb, nullable)
+- after_json (jsonb, nullable)
+- created_at (timestamptz, not null)
+
+Indexes:
+- index(admin_user_id, created_at desc)
+- index(target_entity_type, target_entity_id)
+- index(action_type, created_at desc)
+
+### M10-F11. Optional Support Tables for Phase-1 Readiness
+
+#### Table: user_language_preferences
+Purpose:
+- stores Burmese/English preference per Telegram account
+
+Fields:
+- id (uuid, pk)
+- telegram_user_id (bigint, unique, not null)
+- language_code (varchar, not null, default 'my')
+- updated_at (timestamptz, not null)
+- created_at (timestamptz, not null)
+
+#### Table: notification_logs
+Purpose:
+- records important outbound notifications
+
+Fields:
+- id (uuid, pk)
+- token_id (uuid, nullable, fk -> tokens.id)
+- telegram_user_id (bigint, nullable)
+- notification_type (varchar, not null)
+- channel (varchar, not null, default 'telegram')
+- delivery_status (varchar, not null)
+- payload_summary (text, nullable)
+- sent_at (timestamptz, nullable)
+- created_at (timestamptz, not null)
+
+### M10-F12. Relationship and Enforcement Rules
+
+Relationship summary:
+- one plan -> many tokens
+- one member -> many owned tokens
+- one token -> many linked Telegram accounts up to max_linked_accounts_snapshot
+- one token -> many usage logs
+- one token -> many daily usage rows
+- one payment transaction -> zero or one approved token
+- one token -> many plan change logs
+- one token -> many quota adjustment logs
+- one token -> many verification attempt logs
+
+Required enforcement behavior:
+1. On token validation:
+   - check token status
+   - check expires_at
+   - check total_quota_remaining
+   - check daily usage count for current date
+   - check linked-account eligibility
+
+2. On successful delivery:
+   - insert token_usage_logs row with request_status = delivered
+   - decrement tokens.total_quota_remaining by 1
+   - upsert daily_usage_counters for current date
+   - commit as one transaction
+
+3. On failed delivery or failed validation:
+   - log event where relevant
+   - do not decrement quota
+
+4. On linking new Telegram account:
+   - count active rows in token_linked_accounts
+   - compare against max_linked_accounts_snapshot
+   - insert link only if slot is available
+
+5. On plan change:
+   - preserve historical logs
+   - write subscription_plan_change_logs
+   - do not rewrite historical usage or payment records
+
+6. On quota restore or bonus:
+   - update token remaining quota
+   - write quota_adjustment_logs
+   - never hide the original usage history
+
+Recommended technical standards:
+- use UUID primary keys for business entities
+- use timestamptz everywhere
+- prefer append-only logs for audit tables
+- use jsonb only for review metadata or before/after audit snapshots
+- prefer database constraints and indexes over Telegram-side assumptions
+
 ### M10-F06. Delivery Integrity Rule
 Validate inherited Telegram delivery references before cutover. If delivery depends on source chat/message mapping, sample verification is mandatory before decommissioning the legacy VPS.
 
@@ -814,6 +1376,8 @@ Required so the Telegram bot depends on backend APIs for:
 ### DEP-11. WebApp Admin Layer
 Required before authoritative member management, payment review, quota adjustment, and support operations can be considered complete.
 
+### DEP-12. Atomic Entitlement Transaction Layer
+Required before production release so quota deduction, daily counter update, and usage logging succeed or fail together. This prevents double deduction, partial writes, and quota drift under concurrent requests.
 ---
 
 # =========================================================
@@ -916,6 +1480,15 @@ Mitigation:
 - bot reads and enforces backend state only
 - audit all admin-side modifications centrally
 
+### RSK-11. Concurrent Quota Deduction Risk
+Risk:
+- simultaneous requests from linked accounts may cause double deduction, stale daily-cap checks, or mismatched remaining quota if updates are not atomic
+
+Mitigation:
+- transaction-based delivery commit
+- row-level locking or equivalent safe concurrency control on token and daily counter rows
+- duplicate guard key for short-window repeat requests
+- append-only usage log before/with quota mutation trace
 ---
 
 # =========================================================
