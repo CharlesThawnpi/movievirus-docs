@@ -116,6 +116,13 @@
 - Added adapter-based legacy mapping approach
 - Added quota reconciliation, linked-account migration, and delivery-reference migration rules
 - Added required migration reporting outputs for cutover readiness
+
+### CHG-016 | 2026-03-27
+- Added quota reminder system (5, 1, 0 thresholds)
+- Introduced user usage transparency API
+- Added reminder tracking table
+- Added notification logic and anti-spam rules
+- Added reminder fatigue risk
 ---
 
 # =========================================================
@@ -420,6 +427,32 @@ Delivery Retry Logic:
    - notify user
    - trigger admin notification
 
+### M03-F01-S01. Quota Reminder & User Awareness Flow
+
+System must proactively inform users about remaining quota.
+
+Trigger Conditions:
+
+- when remaining quota = 5 → send reminder
+- when remaining quota = 1 → send urgent reminder
+- when remaining quota = 0 → show upgrade / resubscribe prompt
+
+User Interaction:
+
+- message must include:
+   - remaining quota
+   - plan name
+   - quick action buttons:
+      - "Check Usage"
+      - "Upgrade Plan"
+
+- user may ignore reminders (non-blocking)
+
+Purpose:
+- improve transparency
+- increase conversion
+- reduce confusion
+
 ### M03-F02. Naming Rule
 Use:
 - Linked Accounts
@@ -711,6 +744,36 @@ Backend must:
 User must receive:
 - clear status message
 
+### M07-F10. Reminder Notification Logic
+
+Reminder must be triggered during request lifecycle:
+
+On successful request (after commit-success):
+- check remaining quota
+
+IF remaining_quota == 5:
+   → trigger reminder type: LOW_QUOTA
+
+IF remaining_quota == 1:
+   → trigger reminder type: CRITICAL_QUOTA
+
+IF remaining_quota == 0:
+   → trigger reminder type: EXHAUSTED
+
+Notification Delivery:
+
+- sent via primary bot
+- must include action buttons:
+   - Check Usage
+   - Upgrade Plan
+
+Rules:
+- do not send duplicate reminders repeatedly for same threshold
+- track last reminder sent per token
+
+Future:
+- allow scheduled reminders (optional)
+
 ---
 
 ## Module 08. Multilingual Interface and Content Layer
@@ -824,6 +887,16 @@ Recommended table groups:
 - payment and review tables
 - audit and support tables
 - optional content/localization tables
+
+### M10-F06. Delivery Integrity Rule
+Validate inherited Telegram delivery references before cutover. If delivery depends on source chat/message mapping, sample verification is mandatory before decommissioning the legacy VPS.
+
+### M10-F07. Migration Audit Tables
+Maintain migration-related tables such as:
+- migration_runs
+- migration_row_audit
+- migration_rejections
+- cutover_checkpoints
 
 ### M10-F07. Core Plan and Entitlement Tables
 
@@ -1374,15 +1447,54 @@ Recommended technical standards:
 - use jsonb only for review metadata or before/after audit snapshots
 - prefer database constraints and indexes over Telegram-side assumptions
 
-### M10-F06. Delivery Integrity Rule
-Validate inherited Telegram delivery references before cutover. If delivery depends on source chat/message mapping, sample verification is mandatory before decommissioning the legacy VPS.
+### M10-F12. User Usage Transparency & Reminder Tracking
 
-### M10-F07. Migration Audit Tables
-Maintain migration-related tables such as:
-- migration_runs
-- migration_row_audit
-- migration_rejections
-- cutover_checkpoints
+#### Table: token_reminder_logs
+
+Purpose:
+- prevent duplicate reminder spam
+- track reminder history
+
+Fields:
+- id (uuid, pk)
+- token_id (uuid, fk)
+- reminder_type (varchar)
+- triggered_at (timestamptz)
+- telegram_user_id (bigint, nullable)
+- created_at (timestamptz)
+
+Reminder types:
+- LOW_QUOTA
+- CRITICAL_QUOTA
+- EXHAUSTED
+
+Indexes:
+- index(token_id, reminder_type)
+
+---
+
+#### API Requirement: Usage Transparency
+
+Users must be able to view usage history.
+
+Endpoint:
+
+GET /api/v1/token/usage
+
+Response must include:
+- total quota
+- remaining quota
+- daily usage
+- list of recent requests:
+   - file name
+   - requested_at
+   - status
+
+Purpose:
+- build trust
+- allow self-check
+- reduce support load
+
 
 ---
 
