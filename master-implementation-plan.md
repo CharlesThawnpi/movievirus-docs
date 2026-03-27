@@ -23,6 +23,11 @@
 - Initial Master Implementation Plan created
 - Added planning rules, scope, business model, modules, phases, dependencies, risks, future additions queue, and prompt source sections
 - Established stable IDs for future modular updates
+### CHG-002 | 2026-03-27
+- Added PostgreSQL as recommended VPS-2 target database
+- Added legacy VPS-1 to VPS-2 migration planning logic
+- Added database normalization, entitlement carry-over, and media index reuse guidance
+- Added migration-related phases, dependencies, risks, and prompt-source rules
 
 ---
 
@@ -151,6 +156,14 @@ Each plan should usually define:
 - support Telegram Stars and local manual payment
 - for local manual payment screenshots, OCR should assist review, not replace approval in phase 1
 
+### BL-07. Legacy Migration Logic
+For VPS-1 to VPS-2 transition:
+- PostgreSQL is the recommended target database for VPS-2
+- legacy SQLite data should be treated as source input, not as the target schema design
+- active subscriptions must remain valid through their carried-over entitlement period
+- valid media index data should be reused when delivery references remain operational
+- expired or already used short-lived delivery tokens should not be migrated as active target tokens
+- insecure legacy storage patterns must be removed during migration
 ---
 
 ## Modules
@@ -422,6 +435,57 @@ Store content by message key with Burmese and English variants.
 - unusual account linking activity
 - manual review backlog
 
+## Module 13. Legacy Migration and Cutover
+
+### M13-F01. Migration Objective
+Safely migrate VPS-1 legacy data and active users into VPS-2 without breaking entitlement continuity, delivery integrity, or auditability.
+
+### M13-F02. Target Database Rule
+Use PostgreSQL as the VPS-2 target database. Do not reuse the legacy SQLite schema directly as the production target design.
+
+### M13-F03. Source-to-Target Mapping
+Recommended mapping:
+- users -> members
+- daily_usage -> member_daily_usage
+- transactions -> payments
+- delivery_tokens -> access_tokens plus access_token_items when batch payload normalization is required
+- movies and series -> media_assets or retained split media tables depending on final schema decision
+- series_episode_map -> media_episode_map
+- request_events / search_miss / ai_events -> analytics tables
+
+### M13-F04. Data Classification Rule
+Classify legacy data before import:
+- MUST migrate: active member entitlement data, payment history, daily usage baselines where relevant, movies, series, episode mapping, core media references
+- SHOULD migrate: analytics and reminder history where useful
+- DISCARD or REBUILD: expired/used short-lived delivery tokens, stale request placeholders, obsolete cleanup queues, invalid orphan rows
+
+### M13-F05. Normalization Rule
+Before import:
+- recompute member status from dates instead of trusting legacy status blindly
+- preserve original legacy IDs in mapping columns
+- normalize CSV batch payloads into child rows
+- clean orphan rows
+- normalize enums and plan references
+- enforce target-side foreign keys and indexes
+
+### M13-F06. Delivery Integrity Rule
+Validate inherited Telegram delivery references before cutover. If delivery depends on source chat/message mapping, sample verification is mandatory before decommissioning VPS-1.
+
+### M13-F07. Cutover Rule
+Migration should use:
+- immutable backup
+- staging cleanup
+- validation import
+- final delta sync
+- cutover switch
+- rollback-safe read-only window for VPS-1
+
+### M13-F08. Security Remediation Rule
+VPS-2 must remove insecure legacy practices such as:
+- plaintext token storage
+- publicly exposed dev admin services
+- missing relational integrity
+- weak audit preservation
 ---
 
 [M00-LM Legacy Migration & Cutover Module — ADD]
@@ -690,6 +754,32 @@ Target:
 Modules:
 - future queue promotions
 
+### PH-07. Legacy Discovery and Staging
+Target:
+- inspect VPS-1 schema and logic
+- classify data
+- prepare PostgreSQL target mapping
+- build staging import and cleanup flow
+
+Modules:
+- M13
+- part of M10
+- part of M06
+
+### PH-08. Migration and Cutover
+Target:
+- import normalized data into PostgreSQL
+- validate entitlement parity
+- validate media delivery references
+- switch traffic to VPS-2
+- maintain rollback-safe VPS-1 read-only window
+
+Modules:
+- M13
+- part of M02
+- part of M06
+- part of M09
+- part of M10
 ---
 
 Recommended Phase Additions
@@ -750,6 +840,18 @@ DEP-LM-03. Plan-alias mapping between legacy plans and VPS-2 plans
 DEP-LM-04. Telegram delivery validation environment
 DEP-LM-05. Migration audit logging tables in VPS-2
 DEP-LM-06. Admin review process for rejected or ambiguous rows
+
+### DEP-06. Legacy Data Backup Set
+Required before migration work begins. Must include legacy SQLite DB, code snapshot, env/config snapshot, and service definitions.
+
+### DEP-07. PostgreSQL Target Schema
+Required before staging import, mapping validation, and constraint enforcement.
+
+### DEP-08. Legacy-to-Target Mapping Rules
+Required before member, payment, media, and analytics import logic can be finalized.
+
+### DEP-09. Delivery Reference Validation
+Required before cutover to confirm inherited Telegram source references remain usable on VPS-2.
 ---
 
 ## Risks
@@ -795,7 +897,40 @@ RSK-LM-05. Payment disputes if stale pending transactions are mishandled
 RSK-LM-06. Search gaps if media dedupe or merge logic incorrectly collapses distinct entries
 RSK-LM-07. Series availability mismatch due to incomplete episode mapping in legacy data
 
+### RSK-05. Entitlement Carry-Over Risk
+Risk:
+- active members may lose time, quota continuity, or status accuracy during migration
+Mitigation:
+- recompute entitlement from authoritative dates
+- preserve legacy references
+- validate active user samples before cutover
 
+### RSK-06. Delivery Reference Risk
+Risk:
+- inherited Telegram message references may fail on VPS-2 if channel access or message integrity differs
+Mitigation:
+- sample delivery validation
+- fallback remediation queue
+- do not decommission VPS-1 before parity confirmation
+
+### RSK-07. Legacy Security Debt Risk
+Risk:
+- insecure legacy patterns may be copied into VPS-2
+Mitigation:
+- PostgreSQL target redesign
+- hashed token storage
+- FK enforcement
+- secured admin exposure
+- migration-specific security review
+
+### RSK-08. Data Mapping Risk
+Risk:
+- weakly typed legacy SQLite fields and orphan rows may import incorrectly into normalized PostgreSQL structures
+Mitigation:
+- staging cleanup
+- typed transformation rules
+- rejection logging
+- import audit tables
 ---
 
 ## Future Additions Queue
@@ -825,6 +960,14 @@ Q-LM-003. Legacy plan retirement workflow on renewal
 Q-LM-004. Self-service member migration status checks
 Q-LM-005. Post-migration analytics parity dashboard
 
+### Q-007. Migration Dry-Run Checker
+Potential later enhancement for repeatable pre-cutover validation.
+
+### Q-008. Media Reference Health Scanner
+Potential later enhancement for checking inherited Telegram delivery references at scale.
+
+### Q-009. Legacy Plan Retirement Workflow
+Potential later enhancement for converting legacy carried-over users into fully native VPS-2 plan structures on renewal.
 ---
 
 ## Prompt Source
@@ -846,6 +989,14 @@ This section exists so future prompts can be generated from the implementation p
 ### Prompt Generation Rule
 Always generate implementation prompts from the latest updated source sections, not from outdated memory.
 
+### Migration Prompt Source Add
+When generating migration or database prompts:
+- treat VPS-1 SQLite as source only
+- target PostgreSQL for VPS-2
+- preserve active member entitlements
+- preserve payment and audit history where relevant
+- validate inherited Telegram media delivery references
+- normalize and clean legacy rows before production import
 ---
 
 Prompt Source Add
@@ -863,7 +1014,8 @@ Use VPS-1 audit findings as authoritative migration input:
 
 ## Current Implementation Focus
 - planning only
-- no coding yet
+- PostgreSQL target schema for VPS-2
+- legacy VPS-1 to VPS-2 migration design
 - refine modules and phases first
 - keep future build prompts consistent with this document
 
