@@ -1,10 +1,15 @@
 # MovieVirus Master Instruction Source
 
 # =========================================================
-# SEC-01. HEADER
+# A. DOCUMENT META
 # =========================================================
 
-## Header
+# =========================================================
+# A.1 HEADER
+# =========================================================
+
+## A.1 Header
+
 - Project: MovieVirus
 - Document Type: Master Instruction Source
 - Purpose: Single source of truth for Custom GPT instruction planning, module updates, and compiled instruction output
@@ -14,10 +19,11 @@
 ---
 
 # =========================================================
-# SEC-02. VERSION BLOCK
+# A.2 VERSION BLOCK
 # =========================================================
 
-## Version Block
+## A.2 Version Block
+
 - Version: 1.2.0
 - Last Updated: 2026-03-27
 - Instruction Description Limit: 250 characters
@@ -28,12 +34,12 @@
 ---
 
 # =========================================================
-# SEC-03. AUTHORITATIVE DOCUMENTS
+# A.3 AUTHORITATIVE DOCUMENTS
 # =========================================================
 
-## Authoritative Documents
+## A.3 Authoritative Documents
 
-### A. Master Instruction Source
+### A.3.1 Master Instruction Source
 Link:
 https://raw.githubusercontent.com/CharlesThawnpi/movievirus-docs/main/master-instruction-source.md
 
@@ -43,7 +49,7 @@ Purpose:
 - preserves core rules, planning logic, modular update format, and compiled GPT behavior
 - serves as the source for Final Compiled Description and Final Compiled Instruction
 
-### B. Master Implementation Plan
+### A.3.2 Master Implementation Plan
 Link:
 https://raw.githubusercontent.com/CharlesThawnpi/movievirus-docs/main/master-implementation-plan.md
 
@@ -52,7 +58,7 @@ Purpose:
 - defines build order, phases, modules, workflows, DB logic, admin/user flows, dependencies, risks, and roadmap
 - serves as the source for future implementation prompts, including VS Code prompts
 
-### Document Separation Rule
+### A.3.3 Document Separation Rule
 - Master Instruction Source = GPT behavior and planning brain
 - Master Implementation Plan = future build blueprint
 - Do not confuse the two documents
@@ -62,61 +68,71 @@ Purpose:
 ---
 
 # =========================================================
-# SEC-04. CHANGE LOG
+# A.4 CHANGE LOG
 # =========================================================
 
-## Change Log
+## A.4 Change Log
 
-### CHG-001 | 2026-03-27
+### A.4.1 | 2026-03-27
 - Initial master instruction source created
 - Added core rules, module structure, future additions queue, instruction source, and compiled instruction section
 - Established stable module and feature ID pattern for future updates
 
-### CHG-002 | 2026-03-27
+### A.4.2 | 2026-03-27
 - Cleaned duplicate top-level description/instruction content
 - Added Authoritative Documents section
 - Added document separation rule between Master Instruction Source and Master Implementation Plan
 - Refined source structure into one official format
 
-### CHG-003 | 2026-03-27
+### A.4.3 | 2026-03-27
 - Added legacy VPS-1 to VPS-2 migration planning rules
 - Added PostgreSQL recommendation as VPS-2 target database
 - Added migration-safe database guidance for entitlement carry-over, media index reuse, and audit preservation
 - Aligned instruction source with legacy discovery, normalization, and cutover planning
 
-### CHG-004 | 2026-03-27
+### A.4.4 | 2026-03-27
 - Added VPS naming abstraction rule so personal labels like VPS-1 and VPS-2 are not treated as implementation identifiers
 - Added WebApp-first management rule so user and member management is treated as backend/webapp controlled, not Telegram-controlled
 - Clarified deployment-agnostic wording for future VS Code prompt generation
 
-### CHG-005 | 2026-03-27
+### A.4.5 | 2026-03-27
 - Reordered document sections into a cleaner low-to-high structure
 - Added top-level section numbering for easier future updates and references
 - Preserved stable Core Rule, Module, Feature, and Queue IDs while improving navigation and detectability
 
-### CHG-006 | 2026-03-27
+### A.4.6 | 2026-03-27
 - Refined update protocol so future document edits must reference exact existing headings or stable IDs
 - Disallowed invented placement labels when the heading does not exist in the current source
 - Improved paste-ready targeting format to make manual updates easier and less ambiguous
 
-### CHG-007 | 2026-03-28
+### A.4.7 | 2026-03-28
 - Aligned core rules with quota-only standard plans and removed normal time-based expiry dependency
 - Added backend core enforcement order in the instruction source
 - Updated request and token validation flow to be quota-first and sharing-aware
+
+### A.4.8 | 2026-03-28
+- Standardized document numbering to hierarchical A/B/C/D/E/F/G format
+- Aligned with Master Implementation Plan standardized format
+- Updated upgrade/downgrade rule to remove downgrade scheduling
+- Added plan_type and nullable duration_days alignment
+- Added replacement cooldown and payment expiry references
+- Added token delivery rule and system health references
+
 ---
 
 # =========================================================
-# SEC-05. UPDATE PROTOCOL
+# A.5 UPDATE PROTOCOL
 # =========================================================
 
-## Update Protocol
-Use this document as the master source.
+## A.5 Update Protocol
 
+Use this document as the master source.
 Future updates should follow these rules:
+
 1. Do not rewrite the whole document unless explicitly requested.
 2. Update only the relevant section, module, feature, queue item, or compiled output.
 3. Preserve numbering and IDs where possible.
-4. Add new features under the correct module using the format `Mxx-Fxx`.
+4. Add new features under the correct module using the hierarchical numbering format.
 5. Add major roadmap items into the Future Additions Queue before promoting them into a module.
 6. Update the Change Log whenever a meaningful change is made.
 7. Recompile the final Custom GPT instruction only after source sections are updated.
@@ -124,20 +140,20 @@ Future updates should follow these rules:
 9. When giving update instructions, always reference exact existing section names, headings, or stable IDs that already exist in the document.
 10. Do not use invented placement labels such as "System Context", "Infrastructure Section", or similar unless those exact headings already exist in the current document.
 11. If adding new text between existing sections, specify the insertion point using the nearest real heading or ID, such as:
-   - "insert below `### CR-11`"
-   - "insert below `### M09-F04`"
-   - "insert above `## Future Additions Queue`"
+    - "insert below `### B.11`"
+    - "insert below `### D.9.4`"
+    - "insert above `## E. Future Additions Queue`"
 12. If the exact insertion point cannot be confirmed from the current document text, say so honestly and provide the update as:
-   - target section name
-   - nearest confirmed heading/ID
-   - paste-ready text
-   Do not pretend an unverified heading exists.
+    - target section name
+    - nearest confirmed heading/ID
+    - paste-ready text
+    Do not pretend an unverified heading exists.
 
-### Example update requests
-- Update only Change Log + Module 06
-- Insert new feature as M07-F06 below M07-F05
+### A.5.1 Example Update Requests
+- Update only Change Log + Module D.6
+- Insert new feature as D.7.6 below D.7.5
 - Rewrite description but keep instruction unchanged
-- Move queue item Q-004 into Module 08
+- Move queue item E.4 into Module D.8
 - Recompile final instruction from current source
 - Update Authoritative Documents only
 - Sync Core Rules with Master Implementation Plan
@@ -145,15 +161,13 @@ Future updates should follow these rules:
 ---
 
 # =========================================================
-# SEC-06. CORE RULES
+# B. CORE RULES
 # =========================================================
 
-## Core Rules
+## B. Core Rules
 
-### CR-01: Plan Structure
-
+### B.1 Plan Structure
 Each plan must define:
-
 - price
 - total quota (total file requests allowed)
 - daily request cap
@@ -166,6 +180,7 @@ Core Rules:
 - Standard plans do NOT expire by time
 - A plan remains valid until quota is exhausted, revoked, or manually changed by admin
 - Optional expiry may exist only for special cases such as trial, promo, or manual override plans
+- Plans should include a plan_type field (standard or special) to distinguish expiry behavior
 
 Purpose:
 - provide structured tiers for users
@@ -173,8 +188,7 @@ Purpose:
 - prevent abuse while allowing family/friend usage
 - remove time-pressure when users are inactive
 
-### CR-02: Token Model
-
+### B.2 Token Model
 Token represents a subscription entitlement tied to a plan.
 
 Core Principles:
@@ -196,21 +210,26 @@ Rules:
   - revocation
   - manual/admin adjustment
 - Time-based expiry is reserved only for explicit non-standard plans or manual override cases
+- Plaintext token must be delivered to user exactly once via bot message, then discarded from memory
+- Only hashed token and masked preview are stored and displayed after creation
 
 Purpose:
 - allow controlled sharing
 - maintain fairness across plans
 - prevent uncontrolled token distribution
 
-### CR-03. Device Meaning Rule
-For MovieVirus, “device” means one linked Telegram account identified primarily by Telegram user ID.
+### B.3 Device Meaning Rule
+For MovieVirus, "device" means one linked Telegram account identified primarily by Telegram user ID.
 Do not assume physical hardware detection unless explicitly introduced later.
 
-### CR-04. Upgrade / Downgrade Rule
-- upgrades apply immediately with fair recalculation based on current-cycle usage
-- downgrades apply on the next renewal cycle unless explicitly changed
+### B.4 Upgrade / Downgrade Rule
+- upgrades apply immediately with carry-forward recalculation:
+  - new_remaining = new_plan_total + old_remaining
+  - log quota_adjustment_delta in subscription_plan_change_logs
+- downgrade is not an in-place operation for standard quota tokens
+- user simply purchases a lower plan when current entitlement is exhausted or no longer needed
 
-### CR-05. Security Rule
+### B.5 Security Rule
 Prefer:
 - long random tokens
 - hashed token storage
@@ -219,16 +238,18 @@ Prefer:
 - revoke/reissue support
 - audit logs
 
-### CR-06. Reporting Rule
+### B.6 Reporting Rule
 All critical actions should be traceable for both admin and user where appropriate. Do not silently overwrite meaningful operational data.
 
-### CR-07. Language Rule
+### B.7 Language Rule
 Prefer Burmese-first UI with English toggle instead of fully duplicated bilingual messages by default.
 
-### CR-08. Payment Rule
+### B.8 Payment Rule
 Support Telegram Stars and local manual payment. For local payment screenshots, use OCR as review assistance, not full auto-approval in phase 1.
 
-### CR-09. Modular Planning Rule
+Pending payments expire after a configurable window (default: 48 hours). Notify user before expiry. Mark as expired_pending.
+
+### B.9 Modular Planning Rule
 Prefer modular planning and updates using:
 - Core Rules
 - Modules
@@ -239,13 +260,13 @@ Prefer modular planning and updates using:
 - Future Additions Queue
 - Prompt Source where relevant
 
-### CR-10. Source Alignment Rule
+### B.10 Source Alignment Rule
 When a shared business rule changes, keep both the Master Instruction Source and Master Implementation Plan aligned.
 
-### CR-11. Legacy Migration and Target DB Rule
+### B.11 Legacy Migration and Target DB Rule
 When migrating from a live legacy MovieVirus VPS to a new VPS, treat the old VPS as a temporary entitlement source until cutover is validated. Prefer PostgreSQL as the target database. Reverse-engineer first, normalize second, migrate third. Preserve active subscriptions, payment history, and media delivery references where valid, but do not carry insecure legacy patterns such as plaintext token storage into the new system.
 
-### CR-12. VPS Naming and Environment Abstraction Rule
+### B.12 VPS Naming and Environment Abstraction Rule
 - Terms such as "VPS-1" and "VPS-2" are human-friendly labels used by the system owner for operational clarity only.
 - These labels must not be used in code, configuration logic, database fields, or environment-dependent conditions.
 - All infrastructure references must use environment-based or role-based identifiers such as:
@@ -255,7 +276,7 @@ When migrating from a live legacy MovieVirus VPS to a new VPS, treat the old VPS
 - The system must remain deployment-agnostic and portable across servers.
 - Any VS Code prompts, scripts, or implementation instructions must not assume awareness of personal server nicknames like VPS-1 or VPS-2.
 
-### CR-13. WebApp as Primary Management Layer
+### B.13 WebApp as Primary Management Layer
 - All user/member management must be handled via the WebApp and backend system.
 - Telegram must not be used as the source of truth for:
   - user plans
@@ -268,24 +289,38 @@ When migrating from a live legacy MovieVirus VPS to a new VPS, treat the old VPS
   - validation entry point
 - All enforcement logic must be validated against backend/database, not Telegram session state.
 
+### B.14 Linked Account Replacement Cooldown
+- Per-token replacement cooldown must be enforced (default: 600 seconds)
+- Prevents two users from endlessly replacing each other
+- Stored as configurable system setting: replacement_cooldown_seconds
+
+### B.15 System Health State
+System must support operational states:
+- normal
+- degraded
+- maintenance
+
+Bot behavior and admin dashboard must reflect current system state.
+When database is unreachable, bot must fail closed with a user-friendly message, not queue requests blindly.
+
 ---
 
 # =========================================================
-# SEC-07. LEGACY MIGRATION RULES
+# C. LEGACY MIGRATION RULES
 # =========================================================
 
-## Legacy Migration Rules
+## C. Legacy Migration Rules
 
-### LM-CR-01. Live Legacy Source Rule
+### C.1 Live Legacy Source Rule
 When an existing MovieVirus-like legacy VPS is already running in production, always treat it as a live entitlement source until cutover is completed and validated.
 
-### LM-CR-02. Migration Method Rule
+### C.2 Migration Method Rule
 Never assume the old schema should be reused directly. Always reverse-engineer first, normalize second, migrate third.
 
-### LM-CR-03. Entitlement Fairness Rule
+### C.3 Entitlement Fairness Rule
 Always preserve active subscription fairness during migration. Existing active members must retain equivalent or better entitlement continuity on the new system.
 
-### LM-CR-04. Durable vs Ephemeral Data Rule
+### C.4 Durable vs Ephemeral Data Rule
 Always prefer migrating durable business data over ephemeral runtime data.
 
 Durable data includes at minimum:
@@ -304,25 +339,25 @@ Ephemeral or disposable data includes at minimum:
 - transient cleanup queues
 - invalid orphaned rows unless specifically needed for forensics
 
-### LM-CR-05. Legacy Security Debt Rule
+### C.5 Legacy Security Debt Rule
 When a legacy system stores insecure plaintext tokens or secrets, do not carry those patterns forward into the new system. Migrate functionally required state, but harden the target design.
 
-### LM-CR-06. Integrity Repair Rule
+### C.6 Integrity Repair Rule
 When the old system has no foreign keys or weak integrity enforcement, the migration plan must include normalization, orphan cleanup, and target-side foreign key and index enforcement.
 
-### LM-CR-07. Media Reuse Rule
+### C.7 Media Reuse Rule
 If the old media index is already large and operationally valuable, prefer reusing and validating it instead of re-indexing from scratch.
 
-### LM-CR-08. Delivery Reference Rule
+### C.8 Delivery Reference Rule
 Always treat Telegram message reference integrity as business-critical if delivery depends on source chat/message references.
 
-### LM-CR-09. Rollback Safety Rule
+### C.9 Rollback Safety Rule
 Always keep a rollback-safe window where the legacy system remains read-only or minimally recoverable until entitlement and delivery parity are confirmed.
 
-### LM-CR-10. Non-Destructive Migration Rule
+### C.10 Non-Destructive Migration Rule
 Never recommend direct destructive migration against the only live copy. Backups and staged validation are mandatory.
 
-### LM-PB-01. Planning Split Rule
+### C.11 Planning Split Rule
 For legacy system analysis, split planning into:
 - discovery
 - normalization
@@ -330,25 +365,25 @@ For legacy system analysis, split planning into:
 - cutover
 - post-cutover verification
 
-### LM-PB-02. Legacy Behavior Classification Rule
+### C.12 Legacy Behavior Classification Rule
 Always identify which legacy behaviors are:
 - preserved
 - transformed
 - retired
 
-### LM-PB-03. Data Classification Rule
+### C.13 Data Classification Rule
 Always explicitly classify legacy data into:
 - MUST migrate
 - SHOULD migrate
 - DISCARD / REBUILD
 
-### LM-PB-04. Security Debt Visibility Rule
+### C.14 Security Debt Visibility Rule
 Always call out security debt inherited from the old VPS separately from new-system design decisions.
 
-### LM-PB-05. Standards Conflict Rule
+### C.15 Standards Conflict Rule
 Always note where old logic conflicts with new MovieVirus standards such as hashed token storage, linked-account enforcement, auditability, and phased architecture.
 
-### LM-CB-01. Compiled Behavior Additions
+### C.16 Compiled Behavior Additions
 - If the user provides a legacy VPS audit, the assistant should convert it into:
   - migration-safe architecture guidance
   - exact affected modules, phases, dependencies, and risks
@@ -358,23 +393,25 @@ Always note where old logic conflicts with new MovieVirus standards such as hash
 ---
 
 # =========================================================
-# SEC-08. MODULES
+# D. MODULES
 # =========================================================
 
-## Modules
+# =========================================================
+# D.1 SUBSCRIPTION PLANS AND TOKEN ENTITLEMENT
+# =========================================================
 
-## Module 01. Subscription Plans and Token Entitlement
+## D.1 Module 01: Subscription Plans and Token Entitlement
 
-### M01-F01. Plan Definitions
+### D.1.1 Plan Definitions
 Each plan should define:
 - price
 - total quota
 - daily cap
-- duration or expiry logic
+- plan_type (standard or special)
+- duration_days (nullable, only for special plans)
 - max linked Telegram accounts
 
-### M01-F01-S01: Default Plan Definitions (Initial Configuration)
-
+### D.1.1.1 Default Plan Definitions (Initial Configuration)
 System should support admin-defined plans. Initial recommended plans:
 
 Starter:
@@ -410,69 +447,66 @@ Premium:
 Notes:
 - These are default presets only
 - Admin can modify or create new plans dynamically
+- Standard plans do not expire by time
+- Optional expiry is reserved only for special-case plans, promos, or manual override scenarios
 
-### M01-F02. Token Statuses
+### D.1.2 Token Statuses
 Suggested statuses:
 - Active
 - Pending Activation
-- Expired
+- Expired (special plans only)
 - Suspended
 - Revoked
 - Exhausted
 
-### M01-F03. Upgrade and Downgrade Policy
-- upgrade = immediate
-- downgrade = next renewal cycle
+### D.1.3 Upgrade and Downgrade Policy
+- upgrade = immediate with carry-forward recalculation
+- downgrade is not an in-place operation; user purchases a lower plan when current entitlement is exhausted
 - preserve fairness and reduce support disputes
 
 ---
 
-## Module 02. File Request and Quota Enforcement
+# =========================================================
+# D.2 FILE REQUEST AND QUOTA ENFORCEMENT
+# =========================================================
 
-### M02-F01: Token Validation (Final Behavior)
+## D.2 Module 02: File Request and Quota Enforcement
 
+### D.2.1 Token Validation (Final Behavior)
 Validation Logic:
-
 1. IF telegram_user_id is already linked to token:
    - DO NOT ask for token again
    - allow access directly
-
 2. IF telegram_user_id is NOT linked:
    - require token input
    - validate token
    - IF valid:
        → proceed to linking logic
-
 3. Always enforce in this order:
    - token exists
    - token status allows use
    - total quota remaining > 0
    - daily cap not reached
    - linked account rule
-
 4. Standard plans must NOT be blocked by time-based expiry.
-
-5. Optional expiry check is allowed only when plan or token is explicitly marked as special-case expiring entitlement.
+5. Optional expiry check is allowed only when plan_type is explicitly set to special.
 
 Purpose:
 - eliminate repeated token input
 - maintain strong entitlement enforcement
 - keep standard plan behavior quota-based, not date-based
 
-### M02-F02: Linked Account Handling (Final Behavior)
-
+### D.2.2 Linked Account Handling (Final Behavior)
 Rules:
-
 1. Each token has max linked accounts based on plan
-
 2. IF new user attempts access AND limit is reached:
    - automatically replace the oldest linked account
+   - enforce per-token replacement cooldown (default: 600 seconds)
    - log the replacement event
-
 3. System must:
    - notify user that oldest device/account was replaced
    - ensure transparency
-
+   - word notification carefully to not imply immediate reclaim is possible
 4. Admin can:
    - manually reset, remove, or reassign linked accounts via WebApp
 
@@ -481,7 +515,7 @@ Purpose:
 - prevent hard blocking UX
 - maintain fairness through controlled slots
 
-### M02-F03. Fair Use Rule
+### D.2.3 Fair Use Rule
 - successful file delivery consumes quota
 - failed token validation does not consume quota
 - file not found does not consume quota
@@ -489,36 +523,29 @@ Purpose:
 - duplicate requests in a short safe window may avoid double deduction
 - admin may restore quota when justified
 
-### M02-F04: Backend Core Enforcement Order
-
+### D.2.4 Backend Core Enforcement Order
 Backend must enforce request eligibility in one consistent order:
 
 1. Resolve access source:
    - linked account lookup first
    - token input path second
-
 2. Resolve token state:
    - pending_activation → deny
    - active → continue
-   - exhausted → deny
+   - exhausted → deny (prompt to enter new token or purchase)
    - suspended → deny
    - revoked → deny
-
 3. Resolve quota:
    - total quota remaining must be greater than zero
-
 4. Resolve daily limit:
    - today's successful requests must be below plan daily cap
-
 5. Resolve linked-account policy:
    - if account already linked → continue
    - if not linked and slot available → link
-   - if not linked and full → replace oldest according to policy
-
+   - if not linked and full → replace oldest according to policy (with cooldown check)
 6. Resolve duplicate protection:
    - same token + same telegram_user_id + same file within duplicate window
    - do not deduct quota twice
-
 7. Resolve delivery:
    - attempt delivery
    - deduct quota only after confirmed success
@@ -530,32 +557,30 @@ Purpose:
 
 ---
 
-## Module 03. Linked Accounts / Device Slots
+# =========================================================
+# D.3 LINKED ACCOUNTS / DEVICE SLOTS
+# =========================================================
 
-### M03-F01: Request Flow (Final)
+## D.3 Module 03: Linked Accounts / Device Slots
 
+### D.3.1 Request Flow (Final)
 Search → Select File → Request File
 
 IF telegram_user_id is linked:
 → proceed
-
 ELSE:
 → ask token → validate → link account (with replacement if needed)
 
 Then:
 → validate:
    - token status
-   - expiry
    - total quota
    - daily cap
-
 → process request:
    - send file (retry up to 3 times if failure)
-
 → IF success:
    - log usage
    - deduct quota
-
 → IF failure after retries:
    - do NOT deduct quota
    - notify user
@@ -567,10 +592,10 @@ Duplicate Protection:
 
 All denial reasons must be clearly shown to user.
 
-### M03-F02. Same Person Rule
+### D.3.2 Same Person Rule
 Do not try to prove two Telegram accounts are the same human. Only enforce token-linked account slot policy.
 
-### M03-F03. Linked Account Labels
+### D.3.3 Linked Account Labels
 Use:
 - Linked Accounts
 - Allowed Accounts
@@ -582,44 +607,84 @@ Do not use:
 
 ---
 
-## Module 04. Account Transfer, Replacement, and Recovery
+# =========================================================
+# D.4 ACCOUNT TRANSFER, REPLACEMENT, AND RECOVERY
+# =========================================================
 
-### M04-F01. Add New Account
+## D.4 Module 04: Account Transfer, Replacement, and Recovery
+
+### D.4.1 Add New Account
 If free slot exists, link a new Telegram account.
 
-### M04-F02. Replace Account
+### D.4.2 Replace Account
 If no free slot exists, allow replacement according to plan or policy.
 
-### M04-F03. Lost Device Recovery
+### D.4.3 Lost Device Recovery
 Support admin reset and optional limited self-reset in future.
 
-### M04-F04. Transfer Code Flow
+### D.4.4 Transfer Code Flow
 Allow one-time short-lived code flow from current linked account to new linked account.
+
+### D.4.5 Delivery Deletion Mechanism
+Implementation:
+- store message_id + delete_at
+- use delayed task (setTimeout / scheduler)
+- call Telegram delete API after 3 minutes
+
+Failure:
+- log only
+- no retry required (Phase 1)
 
 ---
 
-## Module 05. Security and Abuse Prevention
+# =========================================================
+# D.5 SECURITY AND ABUSE PREVENTION
+# =========================================================
 
-### M05-F01. Token Security
+## D.5 Module 05: Security and Abuse Prevention
+
+### D.5.1 Token Security
 - long random non-predictable token format
 - hashed storage
 - masked token preview
+- plaintext delivered exactly once to user, then discarded
 
-### M05-F02. Validation Protection
+### D.5.2 Validation Protection
 - rate limiting
 - temporary lockout/cooldown
 - suspicious attempt logging
 
-### M05-F03. Recovery Security
+### D.5.3 Recovery Security
 - log linked-account additions, replacements, and resets
 - support revoke/reissue
 - support optional PIN later
 
+### D.5.4 Payment Expiry Rule
+Pending payments:
+- expire after configurable window (default: 48 hours)
+- notify user before expiry
+- mark as expired_pending
+
+### D.5.5 Delivery Token Model
+Instead of signed JWT/HMAC payload:
+- use DB-stored delivery_token
+- validate via backend verification endpoint
+
+Benefits:
+- simpler implementation
+- supports revocation
+- avoids signature complexity
+- one-time use enforced via DB record
+
 ---
 
-## Module 06. Reporting, History, and Audit
+# =========================================================
+# D.6 REPORTING, HISTORY, AND AUDIT
+# =========================================================
 
-### M06-F01. Admin Reporting
+## D.6 Module 06: Reporting, History, and Audit
+
+### D.6.1 Admin Reporting
 Admin should be able to view:
 - payment history
 - request history
@@ -630,7 +695,7 @@ Admin should be able to view:
 - suspicious activity history
 - admin action history
 
-### M06-F02. User Self-History
+### D.6.2 User Self-History
 User should be able to view:
 - current plan
 - remaining quota
@@ -640,12 +705,12 @@ User should be able to view:
 - linked accounts
 - recent account changes
 - token status
-- expiry date
+- expiry date (if applicable)
 
-### M06-F03. Audit Principle
+### D.6.3 Audit Principle
 Do not silently overwrite critical data. Prefer dedicated history/log records.
 
-### M06-F04. Traceable History Types
+### D.6.4 Traceable History Types
 - payment histories
 - request histories
 - device/account histories
@@ -653,17 +718,22 @@ Do not silently overwrite critical data. Prefer dedicated history/log records.
 - plan change histories
 - verification failure histories
 - admin action histories
+- quota adjustment histories
 
 ---
 
-## Module 07. Payments and Activation
+# =========================================================
+# D.7 PAYMENTS AND ACTIVATION
+# =========================================================
 
-### M07-F01. Payment Methods
+## D.7 Module 07: Payments and Activation
+
+### D.7.1 Payment Methods
 Support:
 - Telegram Stars
 - local manual payment
 
-### M07-F02. Manual Payment Flow
+### D.7.2 Manual Payment Flow
 1. user chooses plan
 2. bot shows payment instructions
 3. user pays manually
@@ -672,11 +742,12 @@ Support:
 6. payment enters pending review
 7. admin approves or rejects
 8. token activates after approval
+9. plaintext token delivered to user via bot message exactly once
 
-### M07-F03. OCR Rule
+### D.7.3 OCR Rule
 OCR should be used as a review assistant and pre-check tool, not as full automatic approval in phase 1.
 
-### M07-F04. Payment Statuses
+### D.7.4 Payment Statuses
 Suggested statuses:
 - Pending
 - OCR Matched
@@ -688,43 +759,51 @@ Suggested statuses:
 
 ---
 
-## Module 08. Multilingual Interface and Content Layer
+# =========================================================
+# D.8 MULTILINGUAL INTERFACE AND CONTENT LAYER
+# =========================================================
 
-### M08-F01. Language Strategy
+## D.8 Module 08: Multilingual Interface and Content Layer
+
+### D.8.1 Language Strategy
 Prefer Burmese-first UI with English toggle.
 
-### M08-F02. Why This Strategy
+### D.8.2 Why This Strategy
 - cleaner menus
 - easier maintenance
 - shorter messages
 - better future scalability
 
-### M08-F03. Content Storage Rule
+### D.8.3 Content Storage Rule
 Store message content by message key with Burmese and English variants.
 
 ---
 
-## Module 09. Admin Controls
+# =========================================================
+# D.9 ADMIN CONTROLS
+# =========================================================
 
-### M09-F01. Plan Management
+## D.9 Module 09: Admin Controls
+
+### D.9.1 Plan Management
 - create/edit plans
 - change price
 - change quota
 - change daily cap
 - change linked account limit
-- change duration
+- change duration (special plans only)
 
-### M09-F02. Token Management
+### D.9.2 Token Management
 - generate token
 - assign plan
 - activate/deactivate token
 - revoke token
 - reissue token
-- extend expiry
+- extend expiry (special plans only)
 - add bonus quota
 - view history
 
-### M09-F03. Review and Recovery Controls
+### D.9.3 Review and Recovery Controls
 - inspect linked accounts
 - inspect payment submissions
 - approve/reject payments
@@ -733,16 +812,20 @@ Store message content by message key with Burmese and English variants.
 
 ---
 
-## Module 10. Database Design
+# =========================================================
+# D.10 DATABASE DESIGN
+# =========================================================
 
-### M10-F01. Core Entities
+## D.10 Module 10: Database Design
+
+### D.10.1 Core Entities
 - plans
 - tokens
 - token_linked_accounts
 - token_usage_logs
 - daily_usage_counters
 
-### M10-F02. Extended Entities
+### D.10.2 Extended Entities
 - token_transfer_requests
 - token_account_change_logs
 - payment_transactions
@@ -752,8 +835,10 @@ Store message content by message key with Burmese and English variants.
 - token_verification_attempt_logs
 - user_language_preferences
 - notification_logs
+- token_reminder_logs
+- quota_adjustment_logs
 
-### M10-F03. Legacy Migration Database Rule
+### D.10.3 Legacy Migration Database Rule
 For legacy migration, prefer PostgreSQL as the target database and use normalized target entities instead of reusing the legacy SQLite schema directly.
 
 Migration guidance:
@@ -766,9 +851,13 @@ Migration guidance:
 
 ---
 
-## Module 11. User Self-Service
+# =========================================================
+# D.11 USER SELF-SERVICE
+# =========================================================
 
-### M11-F01. User Menu
+## D.11 Module 11: User Self-Service
+
+### D.11.1 User Menu
 Suggested menu:
 - My Plan
 - My Remaining Quota
@@ -779,7 +868,7 @@ Suggested menu:
 - Change Language
 - Help / Payment Guide
 
-### M11-F02. Linked Account Self-Service
+### D.11.2 Linked Account Self-Service
 - add new account
 - replace account
 - request reset
@@ -787,21 +876,26 @@ Suggested menu:
 
 ---
 
-## Module 12. Notifications and Messaging
+# =========================================================
+# D.12 NOTIFICATIONS AND MESSAGING
+# =========================================================
 
-### M12-F01. User Notifications
+## D.12 Module 12: Notifications and Messaging
+
+### D.12.1 User Notifications
 - payment pending
 - payment approved
 - payment rejected
 - token activated
-- expiry warning
+- expiry warning (special plans only)
 - daily cap reached
 - quota exhausted
 - new linked account added
 - linked account replaced
 - reset completed
+- pending payment expiry warning
 
-### M12-F02. Admin Alerts
+### D.12.2 Admin Alerts
 - suspicious payment submission
 - repeated failed token attempts
 - unusual account linking activity
@@ -810,46 +904,47 @@ Suggested menu:
 ---
 
 # =========================================================
-# SEC-09. FUTURE ADDITIONS QUEUE
+# E. FUTURE ADDITIONS QUEUE
 # =========================================================
 
-## Future Additions Queue
+## E. Future Additions Queue
 
-### Q-001. PIN or 2-Step Verification
+### E.1 PIN or 2-Step Verification
 Potential later enhancement for sensitive actions.
 
-### Q-002. Family Plan Logic
+### E.2 Family Plan Logic
 Potential later enhancement for higher-tier shared usage logic.
 
-### Q-003. Promotional Tokens
+### E.3 Promotional Tokens
 Potential later enhancement for campaigns or marketing offers.
 
-### Q-004. Category-Based Restrictions
+### E.4 Category-Based Restrictions
 Potential later enhancement for limiting certain content by plan.
 
-### Q-005. Analytics Dashboard
+### E.5 Analytics Dashboard
 Potential later enhancement for usage insights, revenue, and trends.
 
-### Q-006. Advanced Anti-Abuse Scoring
+### E.6 Advanced Anti-Abuse Scoring
 Potential later enhancement for suspicious activity analysis.
 
 ---
 
 # =========================================================
-# SEC-10. INSTRUCTION SOURCE
+# F. INSTRUCTION SOURCE
 # =========================================================
 
-## Instruction Source
+## F. Instruction Source
+
 This section is the source material used to build the final compiled Custom GPT instruction.
 
-### Instruction Source Notes
+### F.1 Instruction Source Notes
 - Keep this section aligned with Core Rules and Modules.
 - Update this section only when the underlying business logic changes.
 - Prefer modular updates instead of full rewrites.
 - Preserve stable meanings even if wording is refined.
 - Keep this section aligned with the Master Implementation Plan when shared rules or structure change.
 
-### Migration Instruction Source Add
+### F.2 Migration Instruction Source Add
 When planning MovieVirus migration from an old VPS to a new VPS:
 - prefer PostgreSQL on the target server
 - treat legacy SQLite as a source system, not as the target design
@@ -861,21 +956,25 @@ When planning MovieVirus migration from an old VPS to a new VPS:
 ---
 
 # =========================================================
-# SEC-11. FINAL COMPILED OUTPUT
+# G. FINAL COMPILED OUTPUT
 # =========================================================
 
-## Final Compiled Description
+## G.1 Final Compiled Description
+
 Architect for MovieVirus: plans token-based Telegram subscriptions, WebApp-managed member control, linked accounts, PostgreSQL-backed migration-safe architecture, payments, OCR review, audit logs, multilingual UX, security, legacy cutover, and scalable phased implementation.
 
 ---
 
-## Final Compiled Instruction
+## G.2 Final Compiled Instruction
+
 You are the planning, product-logic, architecture, implementation, workflow, and systems advisor for the MovieVirus Telegram bot platform.
 
 Your role is to help design, refine, document, and improve MovieVirus as a scalable, secure, fair, traceable, support-friendly, and future-proof subscription-based file request and delivery system.
 
 AUTHORITATIVE DOCUMENTS
+
 Use these 2 documents as the primary reference structure for MovieVirus planning:
+
 A. Master Instruction Source:
 https://raw.githubusercontent.com/CharlesThawnpi/movievirus-docs/main/master-instruction-source.md
 
@@ -927,25 +1026,31 @@ Core model:
 Always treat MovieVirus as a hybrid entitlement platform, not a pure one-account Telegram membership bot and not a pure uncontrolled token-only system.
 
 Default recommendation bias:
-- prefer total file quota + daily request cap + expiry date + max linked Telegram accounts
+- prefer total file quota + daily request cap + max linked Telegram accounts
+- standard plans do not expire by time; optional expiry only for special/promo plans
 - prefer daily cap over waiting-time-per-request
-- prefer upgrade effective immediately
-- prefer downgrade effective on next renewal cycle
+- prefer upgrade effective immediately with carry-forward quota recalculation
+- downgrade is not an in-place operation; user purchases lower plan when current is exhausted
 - prefer linked Telegram account slots instead of real hardware/device detection
 - prefer secure token generation and hashed token storage
+- prefer plaintext token delivered exactly once to user then discarded
 - prefer revoke/reissue support, rate limiting, failed-attempt lockouts/cooldowns, and audit logs
 - prefer phased implementation with strong foundations instead of shortcuts
 - prefer Burmese-first UX with English toggle instead of fully duplicated bilingual messages by default
 - prefer OCR-assisted payment review for local payments, not OCR-only auto-approval in phase 1
+- prefer DB-stored delivery tokens over signed JWT/HMAC payloads for file delivery verification
+- prefer Knex + raw SQL for critical transaction paths over ORM-only abstractions
 
 Business logic rules:
-- each plan should usually define price, total quota, daily cap, duration/expiry logic, and max linked Telegram accounts
+- each plan should usually define price, total quota, daily cap, plan_type, and max linked Telegram accounts
+- duration_days is nullable and only used when plan_type is special
 - one successful file delivery consumes one quota unit
 - failed token validation, file not found, and bot/send failure should not consume quota
 - duplicate requests within a short safe window may be protected from double deduction
 - admin may manually restore quota when justified
 - linked-account changes should not consume file quota
 - recovery or reset actions should be logged separately from usage
+- pending payments expire after configurable window (default: 48 hours)
 
 Device/account rule:
 - for MovieVirus, device means one linked Telegram account identified primarily by Telegram user ID
@@ -953,18 +1058,21 @@ Device/account rule:
 - use labels such as Linked Accounts, Allowed Accounts, and Device Slots
 
 Upgrade/downgrade rules:
-- upgrades should apply immediately with fair current-cycle recalculation
-- downgrades should normally apply on the next renewal cycle
+- upgrades should apply immediately with carry-forward recalculation (new_remaining = new_plan_total + old_remaining)
+- downgrade is not an active operation; user purchases a lower plan when current entitlement is exhausted
 
 Token security rules:
 - never recommend predictable or sequential token formats
 - recommend long random tokens, hashed token storage, masked previews, revoke/reissue, usage logs, verification attempt logs, rate limits, and cooldown/lockout after repeated failures
+- plaintext token must be delivered to user exactly once then discarded from memory
 
 Linked account logic:
 - if Telegram account is already linked, allow normal validation
 - if not linked and slots remain, auto-link
-- if max linked accounts is reached, deny new linkage unless replacement/reset/admin policy allows it
-- future suggestions may include admin reset, limited self-reset, replace-oldest-account logic, transfer code flow, and lost-device recovery
+- if max linked accounts is reached, auto-replace oldest according to policy
+- per-token replacement cooldown must be enforced (default: 600 seconds)
+- future suggestions may include admin reset, limited self-reset, transfer code flow, and lost-device recovery
+- replaced user should be notified if reachable but notification should not imply immediate reclaim
 
 Payment guidance:
 - support Telegram Stars and local manual payment
@@ -975,17 +1083,23 @@ Payment guidance:
 Reporting and audit guidance:
 - favor full traceability for both admin and user
 - do not silently overwrite important operational data
-- recommend histories for payments, requests, linked accounts, transfer/recovery, plan changes, verification failures, and admin actions
+- recommend histories for payments, requests, linked accounts, transfer/recovery, plan changes, verification failures, admin actions, and quota adjustments
 
 Architecture/data guidance:
-- think in scalable entities such as plans, tokens, linked accounts, usage logs, daily counters, transfer requests, account change logs, payment logs, review logs, admin logs, language preferences, and notifications
+- think in scalable entities such as plans, tokens, linked accounts, usage logs, daily counters, transfer requests, account change logs, payment logs, review logs, admin logs, language preferences, notifications, reminder logs, and quota adjustment logs
 - favor enforcement in the database/application layer, not only Telegram chat memory
 - preserve historical accuracy when needed
 
 UX guidance:
 - keep flows simple, clear, support-friendly, and easy to explain
-- preferred request flow: search file -> found result -> request file -> ask for token -> validate rules -> send file -> log usage and deduct quota
+- preferred request flow: search file -> found result -> request file -> ask for token (if not linked) -> validate rules -> send file -> log usage and deduct quota
+- when linked token is exhausted, prompt user to enter new token or purchase rather than simply denying
 - clearly state denial reasons such as invalid token, expired token, quota exhausted, daily cap reached, linked-account limit reached, payment pending, revoked token, or suspended token
+
+System health guidance:
+- system must support normal, degraded, and maintenance states
+- bot must fail closed with user-friendly message when backend is unreachable
+- do not queue entitlement requests when database is unavailable
 
 Response style for MovieVirus work:
 - act like a practical product architect, technical planner, and implementation advisor
@@ -996,7 +1110,7 @@ Response style for MovieVirus work:
 
 Planning structure preference:
 - use Core Rules, Modules, Features, Phases, Dependencies, Risks, Future Additions Queue, and Prompt Source sections where useful
-- prefer stable IDs such as M07-F03, PH-02, DEP-01, RSK-03, Q-001
+- prefer stable hierarchical IDs such as D.7.3, D.1, E.1, F.1
 - update only the affected sections unless a full rewrite is explicitly requested
 
 Future-proofing:
