@@ -24,8 +24,8 @@
 
 ## A.2 Version Block
 
-- Version: 1.1.0
-- Last Updated: 2026-03-27
+* Version: 1.1.0
+* Last Updated: 2026-03-27
 - Update Method: Section-based manual update
 - Update Rule: Prefer updating only the affected phase, module, feature, dependency, risk, queue item, or prompt source instead of regenerating the whole document
 
@@ -196,6 +196,15 @@
 - Added migration clarifications (200 users)
 - Fixed structural inconsistencies (IDs/modules)
 
+### A.3.24 | 2026-03-29
+* Locked final Phase-1 execution decisions for enforcement-sensitive logic
+* Confirmed daily cap scope as per token + Telegram account
+* Standardized duplicate protection window to 60 seconds
+* Confirmed linked-account overflow policy as auto-replace-oldest
+* Standardized replacement cooldown to 10 minutes
+* Reconfirmed no expiry for standard plans
+* Confirmed Telegram Stars auto activation
+* Confirmed admin quota restore is allowed with dedicated audit logging
 ---
 
 # =========================================================
@@ -372,6 +381,23 @@ For legacy transition:
 - valid media index data should be reused when delivery references remain operational
 - expired or already used short-lived delivery tokens should not be migrated as active target tokens
 - insecure legacy storage patterns must be removed during migration
+
+### B.3.10 Locked Phase-1 Enforcement Decisions
+
+The following decisions are locked for Phase 1 and must not be treated as implementation-time assumptions:
+
+* daily cap scope = per token + Telegram account
+* duplicate protection window = 60 seconds
+* linked-account overflow behavior = auto-replace-oldest active account
+* replacement cooldown = 10 minutes per token
+* standard plans = no time-based expiry
+* Telegram Stars = auto activation after verified successful payment
+* admin quota restore = allowed with dedicated audit logging
+
+Purpose:
+
+* convert planning logic into developer-safe implementation rules
+* reduce ambiguity in DB schema, API contract, and workflow handling
 
 ---
 
@@ -1184,6 +1210,41 @@ Bot must:
 - show user message explaining duplicate protection
 - NOT deduct quota
 
+Locked Phase-1 duplicate window:
+
+* duplicate protection window = 60 seconds
+
+Recommended duplicate guard key inputs:
+
+* token_id
+* telegram_user_id
+* file_id or normalized file identity
+* normalized request context
+
+Rules:
+
+* same logical request inside 60 seconds should not deduct quota twice
+* duplicate suppression must not replace hard request idempotency
+* idempotency and duplicate window must both be enforced server-side
+
+Locked Phase-1 duplicate window:
+
+* duplicate protection window = 60 seconds
+
+Recommended duplicate guard key inputs:
+
+* token_id
+* telegram_user_id
+* file_id or normalized file identity
+* normalized request context
+
+Rules:
+
+* same logical request inside 60 seconds should not deduct quota twice
+* duplicate suppression must not replace hard request idempotency
+* idempotency and duplicate window must both be enforced server-side
+
+
 ### C.7.8 Linked Account Replacement via API
 When new user links and limit is reached:
 
@@ -1981,8 +2042,42 @@ Rules:
 * repeated `commit-success` or `commit-failure` calls for the same `request_key` must not create duplicate quota mutations
 * duplicate-window checks may use `duplicate_guard_key` + recent time window, but quota mutation idempotency must rely on unique request identity
 
+#### Locked Daily Cap Scope
+
+Daily cap must be tracked per:
+
+* token_id
+* telegram_user_id
+* usage_date
+
+Implementation rule:
+
+* `daily_usage_counters` should represent one row per token, Telegram account, and system date
+* recommended uniqueness: unique(token_id, telegram_user_id, usage_date)
+
+Purpose:
+
+* enforce fair per-account daily limits under controlled sharing
+* align DB enforcement with the locked business rule
+
 ### C.10.11 Payment, Review, and Plan Change Tables
 
+#### Locked Payment Activation Rule
+
+Telegram Stars:
+
+* verified successful Stars payments should auto-activate in Phase 1
+
+Local manual payments:
+
+* require admin approval in Phase 1
+* OCR may assist but must not be sole approval authority
+
+Rules:
+
+* payment status transitions must be logged
+* auto activation must still be idempotent
+* one successful payment must not generate more than one token
 #### Table: payment_transactions
 Purpose:
 - stores Telegram Stars and local manual payments
@@ -3546,6 +3641,19 @@ State authority rule:
 Button sets must be predefined and reusable.
 Each button_set_key maps to a list of button types.
 
+Locked response requirements for Phase 1:
+
+* daily_remaining must be computed for the current token + Telegram account pair
+* linked_account_action must explicitly distinguish:
+  * already_linked
+  * auto_linked
+  * auto_replaced_oldest
+  * denied_replacement_cooldown
+  * denied_link_limit
+* duplicate_flag must reflect the 60-second duplicate window result
+* standard-plan responses must not imply normal expiry countdown
+* admin-restored quota must appear as normal remaining quota in entitlement responses, while remaining separately auditable in admin/support views
+
 ---
 
 #### Button Set List (Phase 1)
@@ -4592,6 +4700,19 @@ Modules:
 - C.5
 - part of C.10
 
+### D.1.X Phase-1 Build Lock Checklist
+
+Before coding is considered aligned, implementation must reflect these locked rules:
+
+* per-token + per-Telegram-account daily cap
+* 60-second duplicate protection window
+* auto-replace-oldest with 10-minute cooldown
+* no time-based expiry for standard plans
+* Telegram Stars auto activation
+* admin quota restore with dedicated audit trail
+
+This checklist is mandatory for backend, WebApp, and bot integration prompts.
+
 ### D.2 Transfer and Recovery
 Target:
 - add account
@@ -4848,6 +4969,24 @@ Mitigation:
 - row-level locking or equivalent safe concurrency control on token and daily counter rows
 - duplicate guard key for short-window repeat requests
 - append-only usage log before/with quota mutation trace
+
+### F.11.1 Concurrent Link Replacement Risk
+
+Risk:
+
+* simultaneous validation attempts from different Telegram accounts could trigger conflicting replace-oldest actions
+
+Mitigation:
+
+* lock token row and active linked-account rows during replacement evaluation
+* enforce replacement cooldown in the same transaction
+* write one authoritative account-change log for the winning transaction only
+
+Impact if ignored:
+
+* duplicate active links
+* incorrect slot counts
+* support disputes about account removal
 
 ### F.12 Auto Replacement Confusion Risk
 Description:
