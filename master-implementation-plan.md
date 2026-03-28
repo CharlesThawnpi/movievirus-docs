@@ -147,6 +147,11 @@
 - Added button configuration support for future WebApp
 - Added button-state mismatch risk
 
+### CHG-020 | 2026-03-28
+- Defined backend core decision engine and deterministic enforcement order
+- Replaced normal expiry-based validation with quota-first standard-plan logic
+- Added token and request state machines
+- Added atomic commit rules and backend response rules for UI rendering
 ---
 
 # =========================================================
@@ -330,46 +335,47 @@ Define:
 - duration
 - max linked accounts
 
-### M01-F01-S01: Plan Configuration (Initial Seed Data)
+### M01-F01-S01: Default Plan Definitions (Initial Configuration)
 
-System must allow dynamic plan creation via WebApp.
+System should support admin-defined plans.
 
-Initial seed plans:
+Initial recommended plans:
 
 Starter:
-- price: 3000
-- total_quota: 30
-- daily_cap: 3
-- max_linked_accounts: 1
+- price: 3,000 MMK
+- total quota: 30
+- daily cap: 3
+- max linked accounts: 1
 
 Basic:
-- price: 5000
-- total_quota: 50
-- daily_cap: 5
-- max_linked_accounts: 2
+- price: 5,000 MMK
+- total quota: 50
+- daily cap: 5
+- max linked accounts: 2
 
 Plus:
-- price: 10000
-- total_quota: 100
-- daily_cap: 10
-- max_linked_accounts: 3
+- price: 10,000 MMK
+- total quota: 100
+- daily cap: 10
+- max linked accounts: 3
 
 Pro:
-- price: 15000
-- total_quota: 150
-- daily_cap: 15
-- max_linked_accounts: 4
+- price: 15,000 MMK
+- total quota: 150
+- daily cap: 15
+- max linked accounts: 4
 
 Premium:
-- price: 20000
-- total_quota: 200
-- daily_cap: 20
-- max_linked_accounts: 5
+- price: 20,000 MMK
+- total quota: 200
+- daily cap: 20
+- max linked accounts: 5
 
-Requirements:
-- plans stored in database
-- editable via admin panel
-- no hardcoding in bot logic
+Notes:
+- These are default presets only
+- Admin can modify or create new plans dynamically
+- Standard plans do not expire by time
+- Optional expiry is reserved only for special-case plans, promos, or manual override scenarios
 
 ### M01-F02. Token Statuses
 Suggested statuses:
@@ -388,23 +394,41 @@ Suggested statuses:
 
 ## Module 02. File Request and Quota Enforcement
 
-### M02-F01. Search and Request Flow
-- search file
-- show found result
-- request file
-- ask token
-- validate rules
-- send file
-- log usage
-- deduct quota
-Final Behavior Additions:
+### M02-F01: Token & Linked Account Validation Engine
 
-- token must be entered only once per Telegram account
-- once linked, user is never asked for token again unless manually reset
+Validation must prioritize linked account recognition over repeated token input.
 
-Expiry:
-- tokens expire after 90 days
-- expiry must be enforced at validation stage
+Core Logic:
+
+1. Check if telegram_user_id is linked to any token:
+   - IF linked:
+       → use linked token
+       → skip token input
+   - ELSE:
+       → request token
+       → validate token
+       → link account if slot available or replace oldest according to policy
+
+2. Enforce in exact order:
+   - token existence
+   - token status
+   - total quota remaining
+   - daily cap remaining
+   - linked account eligibility
+   - duplicate guard pre-check when relevant
+
+3. Linking rules:
+   - auto-link if slot available
+   - auto-replace oldest if full and policy allows it
+
+4. Standard plans must not depend on time-based expiry checks.
+
+5. Optional expiry checks are allowed only for explicitly configured special-case entitlements.
+
+Purpose:
+- remove repeated token entry
+- enforce fairness via quota + daily cap + controlled sharing
+- keep backend logic deterministic
 
 ### M02-F02. Validation Rule
 Check:
@@ -419,6 +443,57 @@ Check:
 - no deduction on file not found
 - no deduction on send failure
 - duplicate protection window
+### M02-F04: Backend Core Decision Engine
+
+The backend must be the only authority for entitlement decisions.
+
+Decision order per request:
+
+1. Resolve actor
+- identify telegram_user_id
+- identify whether access comes from linked-account path or token-input path
+
+2. Resolve entitlement
+- find token
+- reject if token missing
+- reject if status is not usable
+
+3. Resolve quota
+- reject if total_quota_remaining <= 0
+- reject if daily cap already reached for current date
+
+4. Resolve sharing rule
+- if user linked → continue
+- if not linked:
+  - link if slot available
+  - else replace oldest linked account according to plan policy
+  - log replacement
+
+5. Resolve duplicate guard
+- same token + same telegram_user_id + same file within safe window
+- return duplicate_ignored and do not deduct
+
+6. Resolve delivery attempt
+- create request record
+- issue delivery payload
+- on final success:
+  - deduct quota
+  - increment daily counter
+  - log delivered event
+- on failure:
+  - log failure
+  - do not deduct
+
+7. Resolve post-commit reactions
+- quota reminder at 5 left
+- quota reminder at 1 left
+- exhausted action prompt at 0 left
+- user transparency history update
+
+Purpose:
+- make the request engine predictable
+- keep all critical rules in one backend flow
+- reduce implementation drift across modules
 
 ### M02-F04. Telegram Role Limitation
 Telegram bot is not a membership system.
@@ -434,23 +509,114 @@ It must not:
 
 All critical decisions must be validated through backend APIs and database state.
 
+### M02-F05: Token State Machine
+
+Primary token states:
+- pending_activation
+- active
+- suspended
+- revoked
+- exhausted
+
+State rules:
+- pending_activation → active on successful activation
+- active → exhausted when remaining quota reaches 0
+- active → suspended by admin action
+- active → revoked by admin action
+- suspended → active by admin restore
+- exhausted → active only if quota is restored or new entitlement is issued
+- revoked is terminal unless explicit reissue path is used
+
+Standard plans:
+- do not transition to expired by time
+
+Optional special-case state:
+- expired may exist only for non-standard expiring entitlements if explicitly introduced later
+
+### M02-F06: Request State Machine
+
+Request states:
+- created
+- validated
+- duplicate_ignored
+- delivering
+- delivered
+- failed_validation
+- file_not_found
+- send_failed
+- quota_restored
+
+Transition rules:
+- created → validated after entitlement checks pass
+- created → duplicate_ignored if duplicate guard triggers
+- created → failed_validation if access checks fail
+- validated → delivering when delivery payload is issued
+- delivering → delivered on confirmed success
+- delivering → send_failed after retry limit reached
+- delivered may later be paired with quota_restored only through admin correction flow
+
+Purpose:
+- standardize audit logging
+- simplify retry and dispute handling
+
+### M02-F07: Atomic Commit Rules
+
+The following must happen in one transaction after confirmed successful delivery:
+
+1. insert success usage log
+2. decrement token remaining quota by 1
+3. upsert daily_usage_counters for the current date
+4. trigger reminder threshold evaluation flags
+
+If any part fails:
+- rollback everything
+- do not leave partial quota mutation
+
+Rules:
+- failed validation never deducts
+- duplicate ignored never deducts
+- send failure never deducts
+- admin correction must use separate adjustment logs, not silent overwrite
 ---
 
 ## Module 03. Linked Accounts / Device Slots
 
-### M03-F01. Linked Account Logic
-- linked account reuse
-- auto-link if slot available
-- deny if no slot and no allowed replacement path
-Delivery Retry Logic:
+### M03-F01: Request Flow Implementation
 
-- system must retry failed file send up to 3 times
-- if all retries fail:
-   - mark request as send_failed
-   - do not deduct quota
-   - notify user
-   - trigger admin notification
+1. User selects file
 
+2. System checks access path:
+   IF telegram_user_id is linked:
+      → continue
+   ELSE:
+      → request token
+      → validate token
+      → link account if allowed
+
+3. Validate in backend:
+   - token status
+   - total quota remaining
+   - daily cap
+   - linked account rule
+   - duplicate request window
+
+4. Process:
+   - send delivery link / secondary-bot handoff
+   - retry delivery up to 3 times if needed
+
+5. Commit on confirmed success only:
+   - log usage
+   - deduct quota
+   - update daily counter
+   - trigger reminder threshold checks
+
+6. Handle failures without deduction:
+   - validation failure
+   - file not found
+   - delivery failure after retries
+   - duplicate ignored
+
+7. Return clear user-facing status and matching button set
 ### M03-F01-S01. Quota Reminder & User Awareness Flow
 
 System must proactively inform users about remaining quota.
@@ -2903,6 +3069,7 @@ all denial reasons must be user-readable
 replacement events should notify both the incoming requester and replaced account when reachable
 send-failure events should notify requester and admin
 delivery link expiry/delete timing should be made visible to user
+
 M14-F14. API Idempotency and Logging Rules
 
 Rules:
@@ -2914,6 +3081,35 @@ all admin mutation endpoints must create admin_action_logs
 all verification failures should write token_verification_attempt_logs where relevant
 all delivery failures should write token_usage_logs with zero quota deduction
 
+### M14-F15. Core Logic Response Rules
+
+All entitlement-related endpoints must return backend-decided state, not UI guesses.
+
+Validation endpoints must return enough structured data to drive both message and button rendering:
+
+Required fields where relevant:
+- message_key
+- status_code
+- token_status
+- total_quota_remaining
+- daily_remaining
+- linked_account_action
+- duplicate_flag
+- reminder_trigger
+- button_set_key
+
+Standard denial priorities:
+1. invalid token / link not found
+2. unusable token status
+3. total quota exhausted
+4. daily cap reached
+5. duplicate ignored
+6. delivery failure
+
+Rules:
+- standard plans should not emit expiry-based denial for normal operation
+- quota and sharing state must drive primary UX
+- message and button selection must be derived from backend response data
 ---
 
 **Insert below `### DEP-12.`**
