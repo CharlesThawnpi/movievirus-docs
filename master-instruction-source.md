@@ -24,8 +24,8 @@
 
 ## A.2 Version Block
 
-- Version: 1.2.0
-- Last Updated: 2026-03-27
+* Version: 1.3.0
+* Last Updated: 2026-03-29
 - Instruction Description Limit: 250 characters
 - Instruction Body Limit: 70,000 characters
 - Update Method: Section-based manual update
@@ -118,14 +118,15 @@ Purpose:
 - Added replacement cooldown and payment expiry references
 - Added token delivery rule and system health references
 
-### A.4.9 | 2026-03-28
-- Added quota deduction safety rule (idempotency + delivery confirmation)
-- Added daily cap reset logic with timezone handling
-- Expanded linked account replacement behavior
-- Introduced abuse detection and token security logging
-- Clarified payment activation authority and states
-- Added system-wide rate limiting scope
-- Added user-facing denial transparency rule
+### A.4.9 | 2026-03-29
+* Locked final execution-critical decisions for Phase 1
+* Confirmed daily cap scope as per token + Telegram account
+* Standardized duplicate protection window to 60 seconds
+* Confirmed linked-account replacement as auto-replace-oldest
+* Standardized replacement cooldown to 10 minutes
+* Reconfirmed no expiry for normal plans
+* Confirmed Telegram Stars auto activation
+* Confirmed admin quota restore is allowed with audit logging
 ---
 
 # =========================================================
@@ -575,6 +576,22 @@ Notes:
 - Standard plans do not expire by time
 - Optional expiry is reserved only for special-case plans, promos, or manual override scenarios
 
+### D.1.1.2 Phase-1 Locked Entitlement Decisions
+
+Locked Phase-1 decisions:
+
+* daily cap scope = per token + Telegram account
+* normal plans = no time-based expiry
+* downgrade = not in-place; lower plan is purchased after current entitlement is exhausted
+* linked-account overflow handling = auto-replace-oldest
+* replacement cooldown = 10 minutes
+* duplicate protection window = 60 seconds
+
+Purpose:
+
+* remove implementation ambiguity before coding
+* keep enforcement consistent across backend, WebApp, and Telegram bot flows
+
 ### D.1.2 Token Statuses
 Suggested statuses:
 - Active
@@ -620,6 +637,21 @@ Purpose:
 - eliminate repeated token input
 - maintain strong entitlement enforcement
 - keep standard plan behavior quota-based, not date-based
+
+Phase-1 enforcement order should be:
+
+1. validate request identity / request_id
+2. validate token format and existence
+3. validate token status
+4. validate linked Telegram account state
+5. auto-link if allowed and slots remain
+6. if max linked accounts reached, apply auto-replace-oldest only if replacement cooldown allows
+7. validate total quota remaining
+8. validate daily cap for this token + Telegram account on system date
+9. validate duplicate protection window
+10. attempt delivery
+11. deduct quota only after confirmed successful delivery
+12. write usage and audit logs
 
 ### D.2.2.1 Quota Deduction Safety Rule
 
@@ -676,6 +708,25 @@ Purpose:
 - prevent hard blocking UX
 - maintain fairness through controlled slots
 
+### D.2.2.1 Locked Daily Cap Rule
+
+Daily cap must be enforced per:
+
+* token_id
+* telegram_user_id
+* usage_date
+
+Rules:
+
+* one linked Telegram account cannot consume another linked account's daily allowance
+* daily cap resets at 00:00 using the system timezone
+* recommended system timezone: Asia/Yangon
+
+Purpose:
+
+* keep controlled sharing fair
+* reduce user disputes around daily reset behavior
+
 ### D.2.3 Fair Use Rule
 - successful file delivery consumes quota
 - failed token validation does not consume quota
@@ -683,6 +734,21 @@ Purpose:
 - bot/send failure does not consume quota
 - duplicate requests in a short safe window may avoid double deduction
 - admin may restore quota when justified
+
+### D.2.3.1 Locked Replacement Rule
+
+When a new Telegram account validates a token and max linked accounts is already reached:
+
+* Phase 1 behavior = auto-replace-oldest active linked account
+* replacement is allowed only when replacement cooldown has passed
+* replacement cooldown = 10 minutes per token
+* replaced account must be marked non-active and logged
+* replacement action must not consume quota
+
+Purpose:
+
+* keep account sharing controlled
+* support practical user recovery without manual admin work for normal cases
 
 ### D.2.4 Backend Core Enforcement Order
 Backend must enforce request eligibility in one consistent order:
@@ -753,6 +819,22 @@ Duplicate Protection:
 
 All denial reasons must be clearly shown to user.
 
+### D.3.1.1 Locked Payment Activation Rule
+
+Telegram Stars:
+
+* successful Stars payment should auto-activate entitlement in Phase 1
+
+Local manual payments:
+
+* remain admin-approved in Phase 1
+* OCR may assist review but must not be final authority
+
+Purpose:
+
+* reduce admin workload for trusted platform-native payments
+* preserve fraud control for local manual payment flow
+
 ### D.3.2 Same Person Rule
 Do not try to prove two Telegram accounts are the same human. Only enforce token-linked account slot policy.
 
@@ -766,6 +848,25 @@ Do not use:
 - same person verification
 - hardware fingerprint language
 
+### D.3.2.1 Locked Admin Approval and Restore Rule
+
+Admin is allowed to:
+
+* approve or reject local manual payments
+* manually restore quota when justified
+* manually adjust token state when needed for support recovery
+
+Rules:
+
+* quota restore must be logged separately from normal file usage
+* quota restore reason and acting admin must be recorded
+* restore actions must not overwrite prior usage history
+
+Purpose:
+
+* preserve fairness
+* support dispute resolution
+* maintain full traceability
 ---
 
 # =========================================================
