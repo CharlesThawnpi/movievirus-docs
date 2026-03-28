@@ -131,6 +131,13 @@
 - Excluded delivery_tokens from migration
 - Added data cleanup and integrity correction rules
 - Added entitlement conversion risk
+
+### CHG-018 | 2026-03-27
+- Expanded WebApp admin design from high-level authority rule into a full admin portal structure
+- Added dashboard, plans, tokens, members, linked accounts, payments, requests, audit logs, and media library screens
+- Preserved VPS-1 media management capability while moving toward unified admin control
+- Added WebApp operational alerts and user transparency view guidance
+- Added unified admin portal dependency and admin-portal overreach risk
   
 ---
 
@@ -834,6 +841,271 @@ This includes:
 
 Telegram should reflect backend state, not define it.
 
+### M09-F05. WebApp Admin System Scope
+
+The WebApp admin system must be the primary operational control panel for MovieVirus.
+
+Phase 1 WebApp scope:
+- dashboard overview
+- plan management
+- token management
+- member/user lookup
+- linked-account management
+- payment review and approval
+- quota adjustment
+- request history lookup
+- audit log review
+- media catalog management
+
+Rules:
+- WebApp must manage both:
+  - user/member administration
+  - database-backed operational records
+- WebApp must not be limited to media editing only
+- all writes must go through backend APIs and business rules
+- WebApp must not bypass validation by writing directly to production tables from UI logic
+
+Purpose:
+- replace fragmented Telegram-admin-only operations
+- centralize support, audit, and control
+- improve safety, traceability, and maintainability
+
+### M09-F06. WebApp Navigation Structure
+
+Recommended primary navigation:
+
+1. Dashboard
+2. Plans
+3. Tokens
+4. Members
+5. Linked Accounts
+6. Payments
+7. Requests / Usage Logs
+8. Audit Logs
+9. Media Library
+10. System / Settings
+
+Rules:
+- navigation should be simple and support-friendly
+- high-frequency operational screens must be reachable within one or two clicks
+- search and filter controls should exist on all large-list pages
+- Burmese-first labels with English toggle should follow overall language strategy
+
+### M09-F07. Dashboard Design
+
+Dashboard must show operational summary cards and quick actions.
+
+Recommended dashboard widgets:
+- active tokens count
+- pending payments count
+- exhausted tokens count
+- expiring-soon tokens count
+- recent failed deliveries
+- recent linked-account replacements
+- low-quota tokens needing attention
+- quick actions:
+  - create token
+  - review payment
+  - find member
+  - adjust quota
+
+Purpose:
+- give admin immediate visibility
+- reduce support response time
+- surface operational risks quickly
+
+### M09-F08. Plans Management Screen
+
+Plans screen must support:
+- create new plan
+- edit existing plan
+- activate/deactivate plan
+- change:
+  - name
+  - code
+  - price_mmk
+  - price_stars
+  - total_quota
+  - daily_cap
+  - duration_days
+  - max_linked_accounts
+  - sort_order
+
+Rules:
+- plan edits must not silently rewrite historical token snapshots
+- changes apply to future token creation unless explicit migration action is taken
+- all plan mutations must create admin_action_logs
+
+### M09-F09. Tokens Management Screen
+
+Tokens screen must support:
+- search by token masked preview
+- search by member or Telegram user
+- view token status and plan
+- create token
+- activate token
+- suspend/revoke token
+- extend expiry
+- adjust quota
+- reissue token
+- inspect linked accounts
+- inspect payment/source history
+- inspect request history
+
+Recommended token detail panel:
+- token masked preview
+- plan snapshot
+- remaining quota
+- daily cap remaining
+- expiry
+- linked accounts list
+- recent usage
+- payment/source info
+- quota adjustment history
+- plan change history
+
+Rules:
+- plaintext token must never be shown after creation
+- masked preview only in list/detail views
+- privileged actions require confirmation
+
+### M09-F10. Members Screen
+
+Members screen must support:
+- search by Telegram user ID
+- search by username
+- search by phone or payment reference where available
+- view owned tokens
+- view request history
+- view linked-account history
+- view payment history
+- view language preference
+- view support notes
+
+Rules:
+- member profile is support-facing identity context
+- member records must not replace token-based entitlement enforcement
+- admin can add notes but note changes must be auditable
+
+### M09-F11. Linked Accounts Screen
+
+Linked Accounts screen must support:
+- search by token
+- search by Telegram user ID
+- view active and replaced accounts
+- manually remove/reset account links
+- inspect replacement history
+- inspect first linked time and last used time
+
+Rules:
+- replacement/removal actions must create token_account_change_logs
+- screen must clearly distinguish:
+  - active
+  - replaced
+  - removed
+  - blocked
+- admin must be able to understand why a user lost access
+
+### M09-F12. Payments Screen
+
+Payments screen must support:
+- list pending manual payments
+- view OCR result/precheck
+- approve/reject payment
+- inspect payment history
+- filter by method, status, plan, date
+- open linked token/member after approval
+
+Rules:
+- payment review actions must write payment_review_logs
+- final approval/rejection must write admin_action_logs
+- approved payment should generate or reveal send-ready token result through backend workflow
+
+### M09-F13. Requests and Usage Screen
+
+Requests / Usage screen must support:
+- search by token
+- search by Telegram user
+- filter by status
+- filter by date range
+- inspect:
+  - requested file
+  - request status
+  - quota delta
+  - requested_at
+  - delivered_at
+  - failure reason
+- open related token/member from each row
+
+Purpose:
+- support transparency
+- support dispute handling
+- support quota restoration decisions
+
+### M09-F14. Audit Logs Screen
+
+Audit Logs screen must support:
+- list admin actions
+- filter by admin, entity type, action type, date range
+- inspect before_json and after_json
+- inspect quota adjustments
+- inspect payment review outcomes
+- inspect linked-account changes
+
+Rules:
+- audit logs must be read-only from UI
+- logs must be append-only at system level
+- sensitive views should be permission-restricted even in single-admin phase if future multi-admin expansion is enabled
+
+### M09-F15. Media Library Management Screen
+
+Media Library screen must support:
+- search movies and series
+- inspect source Telegram references
+- edit metadata
+- mark invalid references
+- bulk update metadata
+- review migration/import integrity issues
+
+Purpose:
+- preserve the useful VPS-1 media-editing capability
+- move it into the unified admin portal instead of keeping a separate media-only control surface
+
+### M09-F16. WebApp Permission Model (Phase 1)
+
+Phase 1 default:
+- single admin account
+
+Rules:
+- system may operate with one admin initially
+- backend and UI must still be structured so future role expansion is possible
+- future roles may include:
+  - super_admin
+  - finance_admin
+  - support_admin
+  - reviewer
+
+Purpose:
+- keep Phase 1 simple
+- avoid repainting the architecture later
+
+### M09-F17. WebApp UI Rules
+
+UI rules:
+- Burmese-first labels with English toggle
+- clear status badges for:
+  - active
+  - pending
+  - suspended
+  - expired
+  - exhausted
+  - revoked
+- destructive actions must require confirmation
+- important details should be visible without deep navigation
+- all list pages should support search, filter, and pagination
+- user-facing and admin-facing wording should stay consistent with backend status codes
+
+
 ---
 
 ## Module 10. Database Design
@@ -1525,6 +1797,27 @@ Purpose:
 - request reset
 - see linked-account history
 
+### M11-F03. User Transparency Pages via WebApp / Bot-Linked Views
+
+Users should be able to inspect their own entitlement transparency data through supported self-service views.
+
+Recommended self-service views:
+- current plan
+- token masked preview
+- remaining quota
+- daily remaining
+- expiry date
+- recent requests with date/time
+- linked accounts
+- payment history
+- reminder / exhaustion status
+
+Purpose:
+- reduce support burden
+- reinforce fairness and trust
+- align user-visible data with admin-visible records
+
+
 ---
 
 ## Module 12. Notifications and Messaging
@@ -1546,6 +1839,21 @@ Purpose:
 - repeated failed token attempts
 - unusual account linking activity
 - manual review backlog
+
+### M12-F03. Admin WebApp Alerts
+
+The WebApp should display operational alerts for:
+- pending payment backlog
+- failed delivery backlog
+- repeated quota disputes
+- unusual linked-account replacement frequency
+- low-quota / exhausted token trends
+- migration reconciliation exceptions
+
+Purpose:
+- keep operational issues visible without relying only on Telegram alerts
+- support dashboard-driven administration
+
 
 ---
 
@@ -3326,6 +3634,9 @@ Bot and WebApp must act as clients only.
 Required before:
 - production deployment
 - multi-bot setup
+
+### DEP-14. Unified WebApp Admin Portal
+Required before production operations can fully move away from Telegram-admin-only workflows. The portal must cover token/member/payment/log/media management through backend APIs with audit-safe write paths.
 ---
 
 # =========================================================
@@ -3467,6 +3778,16 @@ Mitigation:
 - telegram_user_id binding where applicable
 - one-time-use or replay-guard validation
 - clear expiry handling and delivery-failure logging
+
+### RSK-14. Admin Portal Overreach Risk
+Risk:
+- a powerful WebApp may accidentally bypass business rules or become a direct-database shortcut if implemented carelessly
+
+Mitigation:
+- all writes must go through backend service/API layer
+- direct UI-to-database mutation must be avoided
+- every mutation must create admin_action_logs and domain-specific logs where applicable
+- destructive actions require explicit confirmation
 ---
 
 # =========================================================
