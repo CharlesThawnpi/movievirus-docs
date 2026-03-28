@@ -123,6 +123,15 @@
 - Added reminder tracking table
 - Added notification logic and anti-spam rules
 - Added reminder fatigue risk
+
+### CHG-017 | 2026-03-27
+- Updated migration strategy based on real VPS-1 system analysis
+- Converted user-based subscription model to token-based entitlement
+- Added plan conversion logic (expiry → quota)
+- Excluded delivery_tokens from migration
+- Added data cleanup and integrity correction rules
+- Added entitlement conversion risk
+  
 ---
 
 # =========================================================
@@ -2759,6 +2768,39 @@ Rules:
 Purpose:
 - ensure clean transition without corrupting new system design
 
+### M16-F01-S01. Legacy System Model Difference
+
+VPS-1 system is fundamentally different from the new system.
+
+Legacy Model:
+- user-based subscription
+- plan_id + expiry_date
+- daily usage tracking
+- no total quota
+- no shared token model
+
+New System Model:
+- token-based entitlement
+- total quota + daily cap
+- max linked accounts
+- controlled sharing
+
+Migration Impact:
+
+- users are primary entity in VPS-1
+- tokens are primary entity in new system
+
+Therefore:
+
+- migration must convert "user subscription" → "token entitlement"
+- one user may become:
+   - one token
+   - OR one of multiple linked accounts under a shared token
+
+Rules:
+- do NOT directly copy plan_id logic
+- must reconstruct entitlement using quota-based plans
+
 ---
 
 ### M16-F02. VPS-1 Backup Requirements
@@ -2801,20 +2843,161 @@ Output:
 
 ---
 
-### M16-F04. Data Mapping Strategy
+### M16-F04. Data Mapping Strategy (Revised Based on VPS-1)
 
-Define mapping between old and new system:
+Migration must transform user-based system into token-based system.
 
-Examples:
+---
 
-- old_tokens → tokens
-- old_users → token_linked_accounts
-- old_requests → token_usage_logs
+#### 1. Users → Tokens + Linked Accounts
 
-Rules:
-- map only necessary data
-- discard corrupted or irrelevant data
-- normalize data into new schema
+Legacy:
+- users table contains subscription info
+
+New:
+
+For each active user:
+- create ONE token
+- assign:
+   - plan_id (mapped)
+   - total_quota (derived)
+   - expiry (mapped from end_date)
+
+- create linked account:
+   - telegram_user_id → token_linked_accounts
+
+Rule:
+- 1 user = 1 token (default Phase 1 migration)
+- future merging/sharing can be handled manually
+
+---
+
+#### 2. Plan Conversion
+
+Legacy:
+- plan_id + expiry_date
+- daily_usage only
+
+New:
+- total quota required
+
+Conversion strategy:
+
+Option A (recommended):
+- derive quota based on remaining days × daily limit
+
+Example:
+- 10 days left × 3/day → 30 quota
+
+Option B:
+- fixed mapping per plan
+
+All conversions must be logged.
+
+---
+
+#### 3. Daily Usage → Usage Logs
+
+Legacy:
+- daily_usage (aggregated)
+
+New:
+- token_usage_logs (event-based)
+
+Strategy:
+- cannot reconstruct exact history
+- create synthetic usage logs OR:
+   - initialize only remaining quota
+
+Rule:
+- prioritize quota correctness over full history
+
+---
+
+#### 4. Delivery Tokens → IGNORE
+
+Legacy:
+- delivery_tokens are temporary access tokens
+
+New:
+- not relevant for subscription
+
+Rule:
+- DO NOT migrate delivery_tokens
+
+---
+
+#### 5. Requests / Events
+
+Legacy:
+- request_events + requests
+
+New:
+- token_usage_logs + request logs
+
+Strategy:
+- optional migration
+- keep only:
+   - successful deliveries (if needed)
+
+---
+
+#### 6. Payments
+
+Legacy:
+- transactions table
+
+New:
+- payment_transactions
+
+Rule:
+- migrate all completed payments
+- preserve:
+   - amount
+   - method
+   - approval metadata
+
+---
+
+#### 7. Media Tables
+
+Legacy:
+- movies, series, series_episode_map
+
+New:
+- media_items, episodes
+
+Rule:
+- MUST migrate
+- preserve:
+   - file_chat_id
+   - file_message_id
+   - file_unique_id
+
+---
+
+#### 8. Discard Tables
+
+Do NOT migrate:
+
+- delivery_tokens
+- message_delete_queue
+- expiry_reminders (optional future)
+- ai_events (optional analytics)
+- search_miss (optional analytics)
+
+---
+
+#### 9. Integrity Fixes During Migration
+
+Must fix:
+
+- orphan records
+- expired but active users
+- inconsistent status
+
+Rule:
+- migration must clean data, not copy errors
 
 ### M16-F04-S01. Detailed Table Mapping (Old → New)
 
@@ -3071,6 +3254,19 @@ Impact:
 Mitigation:
 - log all mappings
 - allow admin review and correction
+
+### RSK-MIG-05: Incorrect Entitlement Conversion
+
+Description:
+- converting user-based subscription to quota-based token may miscalculate value
+
+Impact:
+- users receive too much or too little quota
+
+Mitigation:
+- log all conversions
+- allow admin manual adjustment
+- validate sample users before full migration
 
 ---
 
