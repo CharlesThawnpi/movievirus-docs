@@ -153,19 +153,21 @@ Each plan must define:
 - price
 - total quota (total file requests allowed)
 - daily request cap
-- duration (expiry)
 - max linked Telegram accounts (sharing limit)
 
 Core Rules:
 - One successful file delivery consumes one quota unit
 - Daily cap limits how many requests can be made per day
 - Max linked accounts define how many Telegram users can share the plan
-- Plans must balance fairness, anti-abuse, and user flexibility
+- Standard plans do NOT expire by time
+- A plan remains valid until quota is exhausted, revoked, or manually changed by admin
+- Optional expiry may exist only for special cases such as trial, promo, or manual override plans
 
 Purpose:
 - provide structured tiers for users
 - enable controlled sharing
 - prevent abuse while allowing family/friend usage
+- remove time-pressure when users are inactive
 
 ### CR-02: Token Model
 
@@ -176,13 +178,20 @@ Core Principles:
 - Token enforces:
   - total quota
   - daily cap
-  - expiry (if defined)
   - max linked Telegram accounts
+- Standard tokens do NOT expire by time
 
 Rules:
 - Multiple users can use the same token only within the plan's sharing limit
 - Each linked Telegram account counts toward the sharing limit
 - System must enforce max linked account restriction strictly
+- Token state changes are driven primarily by:
+  - activation
+  - quota exhaustion
+  - suspension
+  - revocation
+  - manual/admin adjustment
+- Time-based expiry is reserved only for explicit non-standard plans or manual override cases
 
 Purpose:
 - allow controlled sharing
@@ -430,19 +439,21 @@ Validation Logic:
    - IF valid:
        → proceed to linking logic
 
-3. Always enforce:
-   - token status (active, expired, suspended, revoked)
-   - total quota remaining
-   - daily cap
+3. Always enforce in this order:
+   - token exists
+   - token status allows use
+   - total quota remaining > 0
+   - daily cap not reached
+   - linked account rule
 
-Expiry Rule:
-- token expires after 90 days
-- expired tokens require renewal or new token
-- user must be clearly informed when expiry blocks access
+4. Standard plans must NOT be blocked by time-based expiry.
+
+5. Optional expiry check is allowed only when plan or token is explicitly marked as special-case expiring entitlement.
 
 Purpose:
 - eliminate repeated token input
 - maintain strong entitlement enforcement
+- keep standard plan behavior quota-based, not date-based
 
 ### M02-F02: Linked Account Handling (Final Behavior)
 
@@ -473,6 +484,45 @@ Purpose:
 - bot/send failure does not consume quota
 - duplicate requests in a short safe window may avoid double deduction
 - admin may restore quota when justified
+
+### M02-F04: Backend Core Enforcement Order
+
+Backend must enforce request eligibility in one consistent order:
+
+1. Resolve access source:
+   - linked account lookup first
+   - token input path second
+
+2. Resolve token state:
+   - pending_activation → deny
+   - active → continue
+   - exhausted → deny
+   - suspended → deny
+   - revoked → deny
+
+3. Resolve quota:
+   - total quota remaining must be greater than zero
+
+4. Resolve daily limit:
+   - today's successful requests must be below plan daily cap
+
+5. Resolve linked-account policy:
+   - if account already linked → continue
+   - if not linked and slot available → link
+   - if not linked and full → replace oldest according to policy
+
+6. Resolve duplicate protection:
+   - same token + same telegram_user_id + same file within duplicate window
+   - do not deduct quota twice
+
+7. Resolve delivery:
+   - attempt delivery
+   - deduct quota only after confirmed success
+
+Purpose:
+- keep all entitlement decisions deterministic
+- prevent inconsistent rule ordering across endpoints
+- simplify backend and support reasoning
 
 ---
 
