@@ -99,6 +99,10 @@ Purpose:
 - Disallowed invented placement labels when the heading does not exist in the current source
 - Improved paste-ready targeting format to make manual updates easier and less ambiguous
 
+### CHG-007 | 2026-03-28
+- Aligned core rules with quota-only standard plans and removed normal time-based expiry dependency
+- Added backend core enforcement order in the instruction source
+- Updated request and token validation flow to be quota-first and sharing-aware
 ---
 
 # =========================================================
