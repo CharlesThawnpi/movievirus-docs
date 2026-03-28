@@ -949,6 +949,36 @@ Benefits:
 - supports revocation
 - avoids signature complexity
 
+#### Required Delivery Session Persistence
+
+Because delivery uses DB-stored delivery tokens, Phase-1 schema must include a persistence model for delivery authorization.
+
+Recommended table: `delivery_sessions`
+
+Suggested fields:
+* id (uuid, pk)
+* request_key (varchar, not null, unique)
+* token_id (uuid, fk -> tokens.id, not null)
+* telegram_user_id (bigint, not null)
+* delivery_token_hash (varchar, not null, unique)
+* delivery_status (varchar, not null, default 'issued')
+* expires_at (timestamptz, not null)
+* consumed_at (timestamptz, nullable)
+* created_at (timestamptz, not null)
+* updated_at (timestamptz, not null)
+
+Delivery status values:
+* issued
+* consumed
+* expired
+* revoked
+
+Rules:
+* delivery token must be short-lived
+* delivery token must be validated by backend
+* consumed delivery token must not be reusable
+* replayed or expired delivery tokens must be denied and logged
+
 ---
 
 # =========================================================
@@ -1932,6 +1962,25 @@ Additional Rule:
    - link_status = replaced
    - replaced_at = now()
 
+#### Schema Enforcement Additions: Request Idempotency and Duplicate Guard
+
+Purpose:
+
+* harden request lifecycle against retries, duplicate delivery commits, and race conditions
+
+Recommended additions:
+
+For `token_usage_logs`:
+* treat `request_key` as the canonical request idempotency key
+* add `duplicate_guard_key` (varchar, nullable)
+* add unique(request_key)
+* add index(duplicate_guard_key, created_at desc)
+
+Rules:
+* each logical request must have exactly one `request_key`
+* repeated `commit-success` or `commit-failure` calls for the same `request_key` must not create duplicate quota mutations
+* duplicate-window checks may use `duplicate_guard_key` + recent time window, but quota mutation idempotency must rely on unique request identity
+
 ### C.10.11 Payment, Review, and Plan Change Tables
 
 #### Table: payment_transactions
@@ -2032,6 +2081,33 @@ Change types:
 
 Indexes:
 - index(token_id, effective_at desc)
+
+#### Payment Approval Idempotency Rule
+
+Purpose:
+
+* prevent one payment from generating multiple active tokens
+
+Required constraints:
+
+* `tokens.source_payment_transaction_id` should be unique when not null
+* `payment_transactions.approved_token_id` should be unique when not null
+
+Rules:
+* approving an already-approved payment must return the existing approved token
+* admin approval must be idempotent
+* repeated approval attempts must not create a second token
+
+#### Phase-1 Downgrade Clarification
+
+Rules:
+* immediate in-place upgrade is supported with fairness recalculation
+* downgrade is not an in-place entitlement mutation in Phase 1
+* lower-tier purchase after current entitlement exhaustion is the standard downgrade path
+
+Purpose:
+* keep implementation aligned with current business rule
+* avoid accidental live-downgrade complexity in early phases
 
 ### C.10.12 Recovery, Audit, and Admin Tables
 
@@ -2204,12 +2280,18 @@ Required enforcement behavior:
    - write quota_adjustment_logs
    - never hide the original usage history
 
+7. On daily-cap enforcement:
+   * derive `usage_date` from a single system timezone
+   * recommended default timezone: Asia/Yangon
+   * all daily-cap checks and daily-counter writes must use the same backend timezone source
+
 Recommended technical standards:
 - use UUID primary keys for business entities
 - use timestamptz everywhere
 - prefer append-only logs for audit tables
 - use jsonb only for review metadata or before/after audit snapshots
 - prefer database constraints and indexes over Telegram-side assumptions
+
 
 ### C.10.15 User Usage Transparency & Reminder Tracking
 
@@ -3234,6 +3316,11 @@ Success example:
   },
   "meta": null
 }
+
+Idempotency rule:
+
+* if the same `request_id` / `request_key` is submitted again after failure was already recorded, backend must return the existing terminal result without creating another log row that could confuse reconciliation
+
 ```
 
 ### C.14.10 Telegram Stars Payment API
@@ -3449,6 +3536,11 @@ Rules:
 - standard plans should not emit expiry-based denial for normal operation
 - quota and sharing state must drive primary UX
 - message and button selection must be derived from backend response data
+
+State authority rule:
+
+* only backend services may mutate token status, payment status, linked-account state, quota counters, approved-token linkage, and delivery-session state
+* bots and WebApp clients must request backend decisions and render backend-decided results only
 
 ### C.14.16 Button Set Definitions
 Button sets must be predefined and reusable.
