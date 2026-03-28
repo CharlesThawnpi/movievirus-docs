@@ -188,6 +188,28 @@ Purpose:
 - prevent abuse while allowing family/friend usage
 - remove time-pressure when users are inactive
 
+Daily Cap Reset Rules:
+- Daily cap resets based on system-defined timezone (default: Asia/Yangon)
+- Reset time: 00:00 (midnight)
+
+- Daily usage is tracked per:
+  * token_id
+  * telegram_user_id
+
+- System must support:
+  * per-user daily cap tracking (recommended)
+  * or per-token global cap (configurable future option)
+
+- Store daily counters in a dedicated table:
+  * token_id
+  * telegram_user_id
+  * date
+  * requests_used
+
+Purpose:
+- ensure consistent daily enforcement
+- avoid timezone-related disputes
+
 ### B.2 Token Model
 Token represents a subscription entitlement tied to a plan.
 
@@ -217,6 +239,7 @@ Purpose:
 - allow controlled sharing
 - maintain fairness across plans
 - prevent uncontrolled token distribution
+
 
 ### B.3 Device Meaning Rule
 For MovieVirus, "device" means one linked Telegram account identified primarily by Telegram user ID.
@@ -495,6 +518,42 @@ Purpose:
 - eliminate repeated token input
 - maintain strong entitlement enforcement
 - keep standard plan behavior quota-based, not date-based
+
+### D.2.2.1 Quota Deduction Safety Rule
+
+Quota must be deducted ONLY after confirmed successful file delivery.
+
+Definition of successful delivery:
+- Telegram API returns success response
+- File/message is confirmed sent to user
+- No bot error or timeout occurred
+
+Rules:
+- Do NOT deduct quota on:
+  * token validation failure
+  * file not found
+  * bot send failure
+  * timeout or retry scenarios
+
+- Implement idempotency protection:
+  * Each request must have a unique request_id
+  * Same request_id must NOT deduct quota more than once
+
+- Implement short duplicate protection window:
+  * If the same user requests the same file within a safe window (e.g., 30–60 seconds)
+  * Do NOT double deduct quota
+
+- Log all deduction events in usage_logs with:
+  * request_id
+  * telegram_user_id
+  * token_id
+  * file_id
+  * deduction_status (success / skipped / failed)
+
+Purpose:
+- prevent unfair quota loss
+- reduce support disputes
+- ensure audit traceability
 
 ### D.2.2 Linked Account Handling (Final Behavior)
 Rules:
