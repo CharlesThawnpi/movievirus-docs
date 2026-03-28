@@ -118,6 +118,14 @@ Purpose:
 - Added replacement cooldown and payment expiry references
 - Added token delivery rule and system health references
 
+### A.4.9 | 2026-03-28
+- Added quota deduction safety rule (idempotency + delivery confirmation)
+- Added daily cap reset logic with timezone handling
+- Expanded linked account replacement behavior
+- Introduced abuse detection and token security logging
+- Clarified payment activation authority and states
+- Added system-wide rate limiting scope
+- Added user-facing denial transparency rule
 ---
 
 # =========================================================
@@ -210,6 +218,7 @@ Purpose:
 - ensure consistent daily enforcement
 - avoid timezone-related disputes
 
+
 ### B.2 Token Model
 Token represents a subscription entitlement tied to a plan.
 
@@ -261,16 +270,90 @@ Prefer:
 - revoke/reissue support
 - audit logs
 
+Abuse Detection Rule:
+
+System should monitor:
+- rapid linked account switching
+- repeated failed token validation attempts
+- abnormal request patterns (burst usage)
+- excessive multi-user sharing within short time
+
+Recommended actions:
+- temporary token suspension
+- cooldown enforcement
+- admin alert logging
+
+All suspicious events must be recorded in:
+- token_security_logs
+
+Purpose:
+- detect and control abuse early
+- support admin investigation
+
+Rate Limiting Scope:
+
+System must apply rate limiting on:
+- token validation attempts
+- file request frequency per user
+- file request frequency per token
+- admin-sensitive operations
+
+Recommended limits:
+- token validation: e.g., 5 attempts / minute
+- request rate: e.g., 3–5 requests / minute
+
+Exceeding limits should trigger:
+- temporary cooldown
+- or soft block with user message
+
+Purpose:
+- prevent brute force
+- protect system stability
+
 ### B.6 Reporting Rule
 All critical actions should be traceable for both admin and user where appropriate. Do not silently overwrite meaningful operational data.
+
+User-Facing Transparency Rule:
+
+System must clearly communicate denial reasons to users, including:
+- invalid token
+- token expired (special plans only)
+- quota exhausted
+- daily cap reached
+- linked account limit reached
+- payment pending
+- token suspended or revoked
+
+Purpose:
+- reduce confusion
+- reduce support load
 
 ### B.7 Language Rule
 Prefer Burmese-first UI with English toggle instead of fully duplicated bilingual messages by default.
 
 ### B.8 Payment Rule
-Support Telegram Stars and local manual payment. For local payment screenshots, use OCR as review assistance, not full auto-approval in phase 1.
+Payment Activation Rules:
 
-Pending payments expire after a configurable window (default: 48 hours). Notify user before expiry. Mark as expired_pending.
+- Telegram Stars:
+  * can be auto-activated after successful payment confirmation
+
+- Local manual payments:
+  * require admin approval in Phase 1
+  * OCR is used as assistance, not final authority
+
+Payment states:
+- pending_review
+- approved
+- rejected
+- expired_pending
+
+Rules:
+- token is NOT activated until payment is approved
+- expired pending payments must NOT activate tokens
+
+Purpose:
+- prevent fraud
+- ensure controlled activation
 
 ### B.9 Modular Planning Rule
 Prefer modular planning and updates using:
@@ -316,6 +399,25 @@ When migrating from a live legacy MovieVirus VPS to a new VPS, treat the old VPS
 - Per-token replacement cooldown must be enforced (default: 600 seconds)
 - Prevents two users from endlessly replacing each other
 - Stored as configurable system setting: replacement_cooldown_seconds
+
+Linked Account Replacement Behavior:
+
+When max linked accounts is reached:
+- New account linking must be denied by default
+
+Future-supported strategies (configurable):
+1. Admin reset (manual removal of all linked accounts)
+2. Replace-oldest-account:
+   - oldest linked account is removed automatically
+3. User self-reset (limited frequency, e.g., once per day)
+
+All replacement actions must:
+- be logged in linked_account_change_logs
+- respect replacement cooldown
+
+Purpose:
+- prevent abuse
+- enable recovery for lost access
 
 ### B.15 System Health State
 System must support operational states:
