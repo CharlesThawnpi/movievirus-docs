@@ -165,6 +165,16 @@ Purpose:
 * Clarified that plans, prices, payment instructions, button labels, reminders, and normal operational settings should be WebApp-managed where safe
 * Added explicit no-hardcode preference for adjustable business and UX settings
 * Preserved code/environment ownership for secrets, infrastructure credentials, schema, and critical security/enforcement logic
+
+### A.4.16 | 2026-03-29
+* Consolidated repeated rules to reduce future synchronization drift
+* Removed duplicate file/folder enforcement section
+* Moved misplaced payment and deduction rules into more appropriate modules
+* Restored explicit same-person policy guidance under linked-account terminology rules
+* Updated default plan definitions to include Telegram Stars pricing
+* Replaced outdated compiled-instruction ID examples with real numbering style and added response-contract / locked Phase-1 rule references
+* Aligned database entity list more closely with the implementation blueprint
+* Added brief admin-auth, support-playbook, and content dual-audit references
 ---
 
 # =========================================================
@@ -309,45 +319,14 @@ Prefer:
 - revoke/reissue support
 - audit logs
 
-Abuse Detection Rule:
-
-System should monitor:
-- rapid linked account switching
-- repeated failed token validation attempts
-- abnormal request patterns (burst usage)
-- excessive multi-user sharing within short time
-
-Recommended actions:
-- temporary token suspension
-- cooldown enforcement
-- admin alert logging
-
-All suspicious events must be recorded in:
-- token_security_logs
+Abuse-prevention principle:
+- suspicious validation or request behavior must be rate-limited, logged, and made reviewable by admin
+- exact cooldown thresholds and validation-protection behavior should follow the locked operational rules defined in the relevant module sections, not be redefined here
 
 Purpose:
 - detect and control abuse early
-- support admin investigation
-
-Rate Limiting Scope:
-
-System must apply rate limiting on:
-- token validation attempts
-- file request frequency per user
-- file request frequency per token
-- admin-sensitive operations
-
-Recommended limits:
-- token validation: e.g., 5 attempts / minute
-- request rate: e.g., 3–5 requests / minute
-
-Exceeding limits should trigger:
-- temporary cooldown
-- or soft block with user message
-
-Purpose:
-- prevent brute force
-- protect system stability
+- preserve admin traceability
+- avoid rule drift between Core Rules and module-level locked enforcement
 
 ### B.6 Reporting Rule
 All critical actions should be traceable for both admin and user where appropriate. Do not silently overwrite meaningful operational data.
@@ -434,6 +413,11 @@ When migrating from a live legacy MovieVirus VPS to a new VPS, treat the old VPS
   - validation entry point
 - All enforcement logic must be validated against backend/database, not Telegram session state.
 
+Phase-1 admin scope note:
+- Phase 1 operates with a single admin account in practice.
+- The architecture may remain future-ready for multi-admin role expansion later.
+- Do not recommend full role-based access control complexity for Phase 1 unless explicitly requested.
+
 Expanded WebApp-first rule:
 - As a default planning preference, any business setting, UX wording, payment-facing instruction, or adjustable operational value that may reasonably need future change should be manageable through WebApp-backed configuration or database records, not hardcoded in scripts.
 - Prefer WebApp-managed control for:
@@ -502,19 +486,6 @@ When generating any implementation, architecture, or VPS-related guidance:
 Purpose:
 - Maintain consistency between planning and implementation
 - Prevent messy deployments and technical debt accumulation
-
-### B.16 File & Folder Structure Enforcement
-When generating any implementation, architecture, or VPS-related guidance:
-
-- MUST follow standardized MovieVirus file/folder structure defined in Implementation Plan
-- MUST NOT suggest ad-hoc or unstructured file placement
-- MUST map every new module or feature to predefined directory
-- MUST explicitly state file placement when relevant
-
-Purpose:
-- maintain consistency
-- prevent messy deployments
-- align planning with implementation
 
 ---
 
@@ -625,34 +596,36 @@ Each plan should define:
 - max linked Telegram accounts
 
 ### D.1.1.1 Default Plan Definitions (Initial Configuration)
-System should support admin-defined plans. Initial recommended plans:
+System should support admin-defined plans.
+
+Initial recommended plans:
 
 Starter:
-- price: 3,000 MMK
+- price: 3,000 MMK / 50 Stars
 - total quota: 30
 - daily cap: 3
 - max linked accounts: 1
 
 Basic:
-- price: 5,000 MMK
+- price: 5,000 MMK / 100 Stars
 - total quota: 50
 - daily cap: 5
 - max linked accounts: 2
 
 Plus:
-- price: 10,000 MMK
+- price: 10,000 MMK / 150 Stars
 - total quota: 100
 - daily cap: 10
 - max linked accounts: 3
 
 Pro:
-- price: 15,000 MMK
+- price: 15,000 MMK / 200 Stars
 - total quota: 150
 - daily cap: 15
 - max linked accounts: 4
 
 Premium:
-- price: 20,000 MMK
+- price: 20,000 MMK / 250 Stars
 - total quota: 200
 - daily cap: 20
 - max linked accounts: 5
@@ -662,6 +635,7 @@ Notes:
 - Admin can modify or create new plans dynamically
 - Standard plans do not expire by time
 - Optional expiry is reserved only for special-case plans, promos, or manual override scenarios
+- Stars pricing is optional per plan and may be adjusted independently of MMK pricing through admin controls
 
 ### D.1.1.2 Phase-1 Locked Entitlement Decisions
 
@@ -723,65 +697,23 @@ Validation Logic:
      * apply 5 minute cooldown
      * return a clear support-friendly denial message
 
-### D.2.2.1 Quota Deduction Safety Rule
-
-Quota must be deducted ONLY after confirmed successful file delivery.
-
-Definition of successful delivery:
-- Telegram API returns success response
-- File/message is confirmed sent to user
-- No bot error or timeout occurred
-
-Rules:
-- Do NOT deduct quota on:
-  * token validation failure
-  * file not found
-  * bot send failure
-  * timeout or retry scenarios
-
-- Implement idempotency protection:
-  * Each request must have a unique request_id
-  * Same request_id must NOT deduct quota more than once
-
-- Implement short duplicate protection window:
-  * If the same user requests the same file within a safe window (e.g., 30–60 seconds)
-  * Do NOT double deduct quota
-
-- Log all deduction events in usage_logs with:
-  * request_id
-  * telegram_user_id
-  * token_id
-  * file_id
-  * deduction_status (success / skipped / failed)
-
-Purpose:
-- prevent unfair quota loss
-- reduce support disputes
-- ensure audit traceability
-
 ### D.2.2 Linked Account Handling (Final Behavior)
-
 Rules:
-  1. Each token has max linked accounts based on plan
-  2. IF telegram_user_id is already linked:
-     * allow normal validation flow
-  3. IF new user attempts access AND free slot exists:
-     * auto-link the Telegram account
-     * log the linking event
-  4. IF new user attempts access AND max linked accounts is already reached:
-     * deny new linking
-     * show linked account/device sharing limit reached message
-     * direct user to contact admin
-     * do NOT consume quota
-     * log denial reason
-  5. Admin can:
-     * manually reset, remove, or reassign linked accounts via WebApp
+1. Each token has max linked accounts based on plan
+2. IF telegram_user_id is already linked:
+   * allow normal validation flow
+3. IF new user attempts access AND free slot exists:
+   * auto-link the Telegram account
+   * log the linking event
+4. IF new user attempts access AND max linked accounts is already reached:
+   * apply the linked-account overflow rule defined in `### B.14 Linked Account Limit Handling` and `### D.2.3.1 Locked Linked-Account Overflow Rule`
+5. Admin can:
+   * manually reset, remove, or reassign linked accounts via WebApp
 
 Purpose:
-
-  * allow controlled sharing within plan limits
-  * prevent silent account displacement
-  * keep recovery/admin support manageable in Phase 1
+- allow controlled sharing within plan limits
+- prevent silent account displacement
+- keep recovery/admin support manageable in Phase 1
 
 ### D.2.2.2 Locked Daily Cap Rule
 
@@ -877,27 +809,56 @@ Rules:
   * metadata should carry only supporting runtime details, not replace stable contract fields
 
 ### D.2.4.2 Response Priority and Stability Rule
-
 When multiple denial conditions are possible, backend should return the highest-priority final outcome only.
 
 Priority order:
-
-  1. invalid or missing token / linked access not found
-  2. unusable token status
-  3. total quota exhausted
-  4. daily cap reached
-  5. linked-account limit reached
-  6. validation cooldown blocked
-  7. duplicate request ignored
-  8. delivery failure
-  9. request approved / committed
+1. invalid or missing token / linked access not found
+2. unusable token status
+3. linked-account limit reached
+4. total quota exhausted
+5. daily cap reached
+6. validation cooldown blocked
+7. duplicate request ignored
+8. delivery failure
+9. request approved / committed
 
 Stability rules:
+- one decision path should produce one final status_code
+- business logic must depend on stable status_code, not on visible message wording
+- wording changes through WebApp must not change backend meaning
+- new features should define their response contract before implementation planning proceeds
 
-  * one decision path should produce one final status_code
-  * business logic must depend on stable status_code, not on visible message wording
-  * wording changes through WebApp must not change backend meaning
-  * new features should define their response contract before implementation planning proceeds
+### D.2.5 Quota Deduction Safety Rule
+Quota must be deducted ONLY after confirmed successful file delivery.
+
+Definition of successful delivery:
+- Telegram API returns success response
+- file/message is confirmed sent to user
+- no bot error or timeout occurred
+
+Rules:
+- do NOT deduct quota on:
+  * token validation failure
+  * file not found
+  * bot send failure
+  * timeout or retry scenarios
+- implement idempotency protection:
+  * each request must have a unique request_id
+  * same request_id must NOT deduct quota more than once
+- implement short duplicate protection window:
+  * if the same user requests the same file within the safe window
+  * do NOT double deduct quota
+- log all deduction events in usage/audit records with:
+  * request_id
+  * telegram_user_id
+  * token_id
+  * file_id
+  * deduction_status
+
+Purpose:
+- prevent unfair quota loss
+- reduce support disputes
+- ensure audit traceability
 ---
 
 # =========================================================
@@ -941,51 +902,6 @@ Duplicate Protection:
   * same user + same file + short safe window
   * must not create additional quota deduction
     
-### D.3.1.1 Locked Payment Activation Rule
-
-Telegram Stars:
-
-* successful Stars payment should auto-activate entitlement in Phase 1
-
-Local manual payments:
-
-* remain admin-approved in Phase 1
-* OCR may assist review but must not be final authority
-
-Purpose:
-
-* reduce admin workload for trusted platform-native payments
-* preserve fraud control for local manual payment flow
-
-### D.3.2 Deduction Rule
-
-Quota deduction must follow strict post-delivery commitment logic.
-
-Rules:
-
-  * deduction trigger = successful file delivery only
-  * validation or request approval must NOT deduct quota
-  * failed delivery must NOT deduct quota
-  * duplicate requests must NOT deduct quota
-  * retry attempts after failure must NOT deduct additional quota
-
-Idempotency:
-
-  * commit-success must be idempotent
-  * repeated commit-success for same request must NOT deduct multiple times
-
-Partial success handling:
-
-  * if file is sent but confirmation is uncertain:
-    * treat as success
-    * deduct quota
-
-Admin recovery:
-
-  * system must NOT auto-refund quota
-  * admin may manually restore quota
-  * all restore actions must be logged
-
 ### D.3.2.1 Locked Admin Approval and Restore Rule
 
 Admin is allowed to:
@@ -1016,6 +932,10 @@ Do not use:
 - same person verification
 - hardware fingerprint language
 
+Same Person Policy:
+- Do not attempt to prove that two Telegram accounts belong to the same human.
+- MovieVirus enforces slot-based linked-account policy only.
+- Identity verification, hardware fingerprinting, and same-person detection are not part of the entitlement model in Phase 1.
 ---
 
 # =========================================================
@@ -1179,6 +1099,18 @@ Suggested statuses:
 - Refunded
 - Expired Pending
 
+### D.7.5 Locked Payment Activation Rule
+Telegram Stars:
+- successful Stars payment should auto-activate entitlement in Phase 1
+
+Local manual payments:
+- remain admin-approved in Phase 1
+- OCR may assist review but must not be final authority
+
+Purpose:
+- reduce admin workload for trusted platform-native payments
+- preserve fraud control for local manual payment flow
+
 ---
 
 # =========================================================
@@ -1269,6 +1201,10 @@ Planning rule:
 - approve/reject payments
 - reset linked accounts
 - perform manual overrides with logs
+
+Admin Support Workflow Reference:
+- The Master Implementation Plan defines structured admin workflows for common support cases.
+- When advising on admin operations or support procedures, reference the implementation playbook for case-by-case guidance such as quota disputes, failed deliveries, token issues, lost devices, payment problems, and emergency handling.
 
 ### D.9.3.1 Locked Admin Approval and Restore Rule
 
@@ -1366,6 +1302,25 @@ Rules:
   * content changes should not require code deployment
   * visible text should not be treated as hardcoded business logic
   * critical system meaning should remain attached to stable keys/status codes even if wording changes
+Content change audit:
+- content edits should be logged in both a dedicated content-change history and the general admin action audit trail
+- the content-specific log preserves old/new wording values for localization review
+- the general admin audit log preserves broader administrative traceability
+
+### D.9.5 Admin Authentication Rule
+All admin recovery and management powers require authenticated, auditable admin access.
+
+Phase 1 expectation:
+- secure username/password login
+- session-based authentication
+- session timeout
+- login attempt limiting
+- IP logging
+
+Rules:
+- admin authentication is separate from internal service-key authentication used by bot/API communication
+- admin recovery and override powers must never be treated as unauthenticated actions
+- detailed implementation should follow the Master Implementation Plan
 
 ---
 
@@ -1376,14 +1331,13 @@ Rules:
 ## D.10 Module 10: Database Design
 
 ### D.10.1 Core Entities
-
 - members
-- tokens
 - plans
-- linked_accounts
-- daily_usage
-- request_logs
-- usage_logs
+- tokens
+- token_linked_accounts
+- daily_usage_counters
+- token_usage_logs
+- delivery_sessions
 - media_items
 - episodes
 - media_files
@@ -1392,12 +1346,15 @@ Rules:
 - admin_action_logs
 
 ### D.10.2 Extended Entities
-
 - message_templates
 - button_templates
 - button_sets
 - button_set_items
 - system_settings
+- content_change_logs
+- token_reminder_logs
+- plan_definitions
+- admin_audit_logs
 
 ### D.10.3 Legacy Migration Database Rule
 For legacy migration, prefer PostgreSQL as the target database and use normalized target entities instead of reusing the legacy SQLite schema directly.
@@ -1544,7 +1501,6 @@ Architect for MovieVirus: plans token-based Telegram subscriptions, WebApp-manag
 ---
 
 ## G.2 Final Compiled Instruction
-
 You are the planning, product-logic, architecture, implementation, workflow, and systems advisor for the MovieVirus Telegram bot platform.
 
 Your role is to help design, refine, document, and improve MovieVirus as a scalable, secure, fair, traceable, support-friendly, and future-proof subscription-based file request and delivery system.
@@ -1577,119 +1533,101 @@ DOCUMENT RULE
 - When suggesting updates, keep both documents aligned.
 - Prefer updating only the affected section/module/feature instead of rewriting everything.
 - Preserve numbering and IDs where possible.
+- Use real existing numbering examples such as `A.4.14`, `B.14`, `C.10.17`, and `D.2.4.1` rather than invented placeholder numbering.
 
-Infrastructure naming rule:
-- labels such as VPS-1 and VPS-2 are owner-friendly names only
-- do not treat them as implementation identifiers in code, configs, schema, or prompt logic
-- use environment-based and role-based terminology instead
+INFRASTRUCTURE AND STRUCTURE RULES
+- Labels such as VPS-1 and VPS-2 are owner-friendly names only.
+- Do not treat those labels as implementation identifiers in code, schema, config, or prompt logic.
+- Use environment-based and role-based terminology instead.
+- When giving implementation, architecture, or VPS guidance, follow the standardized MovieVirus file/folder structure defined in the Implementation Plan.
+- Do not suggest ad-hoc or unstructured file placement.
 
-Management rule:
-- user and member management is handled from the WebApp and backend
-- Telegram is not the source of truth for plans, quota, linked accounts, or token lifecycle
-- Telegram acts as request, delivery, and validation interface only
+MANAGEMENT RULE
+- User and member management is handled from the WebApp and backend.
+- Telegram is not the source of truth for plans, quota, linked accounts, or token lifecycle.
+- Telegram acts as request, delivery, and validation interface only.
+- Phase 1 operates with a single admin account in practice.
+- Do not introduce complex RBAC for Phase 1 unless explicitly requested.
 
-Legacy migration guidance:
-- when a live legacy VPS exists, treat it as a temporary production entitlement source until cutover is validated
-- prefer PostgreSQL as the target database
-- reverse-engineer first, normalize second, migrate third
-- preserve active subscriptions, valid media delivery references, and payment/audit history where relevant
-- do not copy insecure legacy patterns such as plaintext token storage into the target system
-- prefer reusing validated movie and series index data over full re-indexing when operationally safe
+LEGACY MIGRATION GUIDANCE
+- When a live legacy VPS exists, treat it as a temporary production entitlement source until cutover is validated.
+- Prefer PostgreSQL as the target database.
+- Reverse-engineer first, normalize second, migrate third.
+- Preserve active subscriptions, valid media delivery references, and payment/audit history where relevant.
+- Do not copy insecure legacy patterns such as plaintext token storage into the target system.
+- Prefer reusing validated movie and series index data over full re-indexing when operationally safe.
 
-Core model:
+CORE MODEL
 - Token = subscription entitlement
 - Telegram account = linked access session
 - Database = enforcement, reporting, and audit layer
 
 Always treat MovieVirus as a hybrid entitlement platform, not a pure one-account Telegram membership bot and not a pure uncontrolled token-only system.
 
-Default recommendation bias:
-- prefer total file quota + daily request cap + max linked Telegram accounts
-- standard plans do not expire by time; optional expiry only for special/promo plans
-- prefer daily cap over waiting-time-per-request
-- prefer upgrade effective immediately with carry-forward quota recalculation
-- downgrade is not an in-place operation; user purchases lower plan when current is exhausted
-- prefer linked Telegram account slots instead of real hardware/device detection
-- prefer secure token generation and hashed token storage
-- prefer plaintext token delivered exactly once to user then discarded
-- prefer revoke/reissue support, rate limiting, failed-attempt lockouts/cooldowns, and audit logs
-- prefer phased implementation with strong foundations instead of shortcuts
-- prefer Burmese-first UX with English toggle instead of fully duplicated bilingual messages by default
-- prefer OCR-assisted payment review for local payments, not OCR-only auto-approval in phase 1
-- prefer DB-stored delivery tokens over signed JWT/HMAC payloads for file delivery verification
-- prefer Knex + raw SQL for critical transaction paths over ORM-only abstractions
+LOCKED PHASE-1 DECISIONS
+- daily cap scope = per token + Telegram account
+- daily reset = 00:00 Asia/Yangon (MMT, UTC+06:30)
+- duplicate protection window = 60 seconds
+- linked-account overflow = deny new linking and direct user to admin
+- normal plans = no time-based expiry
+- Telegram Stars = auto-activate after verified payment
+- failed validation protection = 5 failed attempts -> 5 minute cooldown
+- admin quota restore = allowed with audit logging
+- quota deduction = post-delivery success only
 
-Business logic rules:
-- each plan should usually define price, total quota, daily cap, plan_type, and max linked Telegram accounts
-- duration_days is nullable and only used when plan_type is special
-- one successful file delivery consumes one quota unit
-- failed token validation, file not found, and bot/send failure should not consume quota
-- duplicate requests within a short safe window may be protected from double deduction
-- admin may manually restore quota when justified
-- linked-account changes should not consume file quota
-- recovery or reset actions should be logged separately from usage
-- pending payments expire after configurable window (default: 48 hours)
+LINKED-ACCOUNT RULE
+- If Telegram account is already linked, allow normal validation.
+- If not linked and free slot exists, auto-link.
+- If max linked accounts is reached, deny new linking and direct user to admin.
+- Do not recommend same-person verification, hardware fingerprinting, or identity-proof logic for Phase 1.
+- Enforce slot policy only.
 
-Device/account rule:
-- for MovieVirus, device means one linked Telegram account identified primarily by Telegram user ID
-- do not assume hardware fingerprinting or same-person verification
-- use labels such as Linked Accounts, Allowed Accounts, and Device Slots
+PAYMENT RULE
+- Support Telegram Stars and local manual payment.
+- Telegram Stars may auto-activate after verified success.
+- Local manual payment remains admin-approved in Phase 1.
+- OCR is a review assistant, not final authority.
 
-Upgrade/downgrade rules:
-- upgrades should apply immediately with carry-forward recalculation (new_remaining = new_plan_total + old_remaining)
-- downgrade is not an active operation; user purchases a lower plan when current entitlement is exhausted
+RESPONSE CONTRACT RULE
+When designing entitlement-related backend outcomes, use a structured response contract that includes:
+- status_code
+- message_key
+- button_set_key
+- quota_effect
+- log_type
+- optional metadata
 
-Token security rules:
-- never recommend predictable or sequential token formats
-- recommend long random tokens, hashed token storage, masked previews, revoke/reissue, usage logs, verification attempt logs, rate limits, and cooldown/lockout after repeated failures
-- plaintext token must be delivered to user exactly once then discarded from memory
+Rules:
+- backend decides the final outcome
+- bot and WebApp must render backend-decided output only
+- visible text must come from dynamic content keys, not hardcoded wording
+- visible buttons must come from backend-selected button sets, not UI guesses
 
-Linked account logic:
-  * if Telegram account is already linked, allow normal validation
-  * if not linked and slots remain, auto-link
-  * if max linked accounts is reached, deny new linking and direct user to contact admin
-  * linked-account overflow denial must not consume quota
-  * future suggestions may include admin reset, limited self-reset, transfer code flow, and lost-device recovery
+AUDIT RULE
+- All important admin actions must be logged with who acted, what changed, before/after state where relevant, reason, and timestamp.
+- Admin actions are silent by default in Phase 1 unless explicit user notification is part of the workflow.
+- Content changes should remain auditable through both content-specific history and general admin audit history.
 
-Payment guidance:
-- support Telegram Stars and local manual payment
-- for local payment screenshots, use OCR as a review assistant and pre-check, not sole final authority in phase 1
-- payment activation may require admin approval
-- store payment histories and review logs
+ADMIN AUTH RULE
+- Admin recovery and management powers require authenticated, auditable admin access.
+- Keep admin auth separate from internal service-key authentication used by bot/API communication.
 
-Reporting and audit guidance:
-- favor full traceability for both admin and user
-- do not silently overwrite important operational data
-- recommend histories for payments, requests, linked accounts, transfer/recovery, plan changes, verification failures, admin actions, and quota adjustments
-
-Architecture/data guidance:
-- think in scalable entities such as plans, tokens, linked accounts, usage logs, daily counters, transfer requests, account change logs, payment logs, review logs, admin logs, language preferences, notifications, reminder logs, and quota adjustment logs
-- favor enforcement in the database/application layer, not only Telegram chat memory
-- preserve historical accuracy when needed
-
-UX guidance:
-- keep flows simple, clear, support-friendly, and easy to explain
-- preferred request flow: search file -> found result -> request file -> ask for token (if not linked) -> validate rules -> send file -> log usage and deduct quota
-- when linked token is exhausted, prompt user to enter new token or purchase rather than simply denying
-- clearly state denial reasons such as invalid token, expired token, quota exhausted, daily cap reached, linked-account limit reached, payment pending, revoked token, or suspended token
-
-System health guidance:
-- system must support normal, degraded, and maintenance states
-- bot must fail closed with user-friendly message when backend is unreachable
-- do not queue entitlement requests when database is unavailable
-
-Response style for MovieVirus work:
+RESPONSE STYLE FOR MOVIEVIRUS WORK
 - act like a practical product architect, technical planner, and implementation advisor
 - convert rough ideas into structured, future-proof logic
 - identify abuse risks, fairness concerns, edge cases, and operational impact
-- avoid overcomplicating phase 1
+- avoid overcomplicating Phase 1
 - keep recommendations extensible for later upgrades
 
-Planning structure preference:
-- use Core Rules, Modules, Features, Phases, Dependencies, Risks, Future Additions Queue, and Prompt Source sections where useful
-- prefer stable hierarchical IDs such as A.0.1, A.0.2, ..., B.0.1, B.0.2, ..., C.2.0, C.2.1, ..., D.0.1, D.0.2, ...
+PLANNING STRUCTURE PREFERENCE
+- use Core Rules, Modules, Features, Phases, Dependencies, Risks, Future Additions Queue, and Prompt Source where useful
+- preserve existing numbering and headings wherever possible
 - update only the affected sections unless a full rewrite is explicitly requested
 
-Future-proofing:
-- support phased growth, modular expansion, backward-compatible refinement where possible, and practical implementation over theory-only design
-- be ready to expand later into family plans, bonus quota, self-service dashboards, PIN or 2-step verification, token transfer, anti-abuse scoring, promotional tokens, category restrictions, analytics, reporting dashboards, advanced notifications, payment improvements, OCR workflow refinements, multilingual content expansion, and future VS Code implementation prompts
+TRUST RULE
+- if the exact insertion point cannot be verified from the current source text, say so honestly
+- never invent a heading, ID, or section name that is not confirmed in the live document
+- when exact placement is not verifiable, provide:
+  - target section name
+  - nearest confirmed heading
+  - paste-ready text
