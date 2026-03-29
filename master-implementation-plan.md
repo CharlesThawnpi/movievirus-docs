@@ -244,6 +244,11 @@
 * Added explicit no-hardcode implementation preference for adjustable product settings
 * Preserved code/environment ownership for secrets, infrastructure credentials, schema, and critical enforcement/security logic
 
+### A.3.30 | 2026-03-29
+* Synced implementation-plan display guidance with instruction-source cleanup
+* Added Telegram Stars prices to default plan definitions for consistency with Phase-1 payment rules
+* Added explicit behavioral-authority note so Module C.2 implementation ordering stays aligned with Document A
+
 ---
 
 # =========================================================
@@ -662,13 +667,11 @@ Premium:
 - max linked accounts: 5
 
 Notes:
-- price_stars is nullable
-- Stars pricing is optional per plan
-- Stars pricing may be adjusted independently of MMK pricing
 - These are default presets only
 - Admin can modify or create new plans dynamically
 - Standard plans do not expire by time
 - Optional expiry is reserved only for special-case plans, promos, or manual override scenarios
+- Stars pricing is optional per plan and may be adjusted independently of MMK pricing through admin controls
 
 ### C.1.2 Token Statuses
 
@@ -793,6 +796,10 @@ Decision order per request:
      * quota reminder at 1 left
      * exhausted action prompt at 0 left
      * user transparency history update
+       
+Behavioral alignment note:
+- This implementation order must remain aligned with the behavioral enforcement order defined in the Master Instruction Source.
+- When step granularity differs between the two documents, the Master Instruction Source is the behavioral authority and this section should be treated as implementation-level grouping of the same logic.
 
 Purpose:
 
