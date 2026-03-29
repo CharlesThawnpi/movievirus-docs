@@ -254,6 +254,168 @@ This document is for future implementation planning, not for storing GPT behavio
 - Master Instruction Source = GPT thinking and update behavior
 - Master Implementation Plan = build blueprint and future implementation logic
 
+### A.5.2.0 File & Folder Structure Standardization (VPS + Codebase)
+
+Purpose:
+Ensure all MovieVirus deployments (VPS + codebase) follow a consistent, scalable, and maintainable structure to prevent disorder, debugging difficulty, and deployment risk.
+
+Core Rules:
+
+- Every component must have a predefined folder location.
+- No random file placement in root or unrelated directories.
+- Separate concerns clearly: bot logic, API, database, config, logs, scripts.
+- Environment-specific files must be isolated (dev / staging / production ready).
+- All paths must be predictable for automation and future scaling.
+
+---
+
+#### A.5.2.1 Root Project Structure (Mandatory)
+
+All VPS deployments must follow this base structure:
+
+/movievirus/
+├── app/                  # Core application logic
+├── bot/                  # Telegram bot handlers & flows
+├── api/                  # Internal or external API layer
+├── services/             # Business logic services (quota, token, validation)
+├── database/             # DB models, migrations, seeders
+├── config/               # Environment configs (non-secret templates only)
+├── scripts/              # Admin scripts, cron jobs, utilities
+├── logs/                 # System logs (runtime, errors, audit exports)
+├── storage/              # Temporary or persistent file storage
+├── backups/              # DB backups and export snapshots
+├── tests/                # Testing (future phase)
+├── docs/                 # Local documentation (optional sync from master docs)
+└── main_entry/           # Entry point (bot runner / app bootstrap)
+
+Rules:
+- No logic files allowed in root directory.
+- Root should only contain folder structure + minimal bootstrap files.
+- All modules must map into one of the above directories.
+
+---
+
+#### A.5.2.2 Module-Based Folder Mapping
+
+Each major system module must live in a dedicated structure:
+
+Example:
+
+/services/token/
+/services/quota/
+/services/linked_accounts/
+/services/payment/
+/services/request/
+/services/admin/
+
+Rules:
+- One module = one folder
+- Each module must contain:
+  - logic
+  - validators
+  - helpers (if needed)
+- Avoid cross-module file scattering
+
+---
+
+#### A.5.2.3 Bot Structure Standardization
+
+/bot/ must follow:
+
+/bot/
+├── handlers/        # Command and message handlers
+├── flows/           # Step-by-step user flows (request, payment, etc.)
+├── middlewares/     # Rate limit, validation, logging
+├── keyboards/       # Telegram UI buttons
+├── messages/        # Text templates (Burmese-first, EN optional)
+└── routers/         # Routing logic
+
+Rules:
+- No business logic inside handlers (must call services/)
+- Flows must be reusable and modular
+
+---
+
+#### A.5.2.4 Config & Secrets Handling
+
+/config/
+- config.template.json (or .env.example)
+- NO secrets stored in repo or plain files
+
+Rules:
+- Real secrets must be injected via environment variables
+- Separate:
+  - system config
+  - feature flags
+  - environment configs
+
+---
+
+#### A.5.2.5 Logs & Audit Separation
+
+/logs/
+- app.log
+- error.log
+- security.log
+- request.log
+
+Rules:
+- Logs must not mix with database records
+- Critical actions must still be stored in DB (logs are not source of truth)
+
+---
+
+#### A.5.2.6 Script & Automation Rules
+
+/scripts/
+- backup.sh
+- cleanup.sh
+- migrate.sh
+- deploy.sh
+
+Rules:
+- All manual VPS commands should be converted into reusable scripts
+- Avoid undocumented one-time commands
+
+---
+
+#### A.5.2.7 Naming Conventions
+
+- Use lowercase_with_underscores for folders
+- Use clear module names (token_service, quota_service)
+- Avoid abbreviations unless standard
+
+---
+
+#### A.5.2.8 Enforcement Rule
+
+Any new feature, module, or implementation MUST:
+- Declare its folder placement before coding
+- Follow this structure strictly
+- Be rejected/refactored if violating structure
+
+---
+
+Impact:
+
+- Prevents messy VPS deployments
+- Enables faster debugging and onboarding
+- Supports scaling into multi-service architecture later
+- Ensures consistency across future developers and automation tools
+
+Dependencies:
+- Applies to all modules (M01–Mxx)
+- Required before Phase 2 expansion
+
+Risks:
+- RSK-NEW-01: Developers bypass structure → mitigated via enforcement rule
+- RSK-NEW-02: Over-structuring early → mitigated by keeping Phase 1 minimal
+
+Future Additions:
+- Containerization (Docker structure alignment)
+- Multi-instance deployment structure
+- CI/CD pipeline directory alignment
+
 ### A.5.3 Modularity Rule
 Every major implementation area should be organized into modules, features, phases, dependencies, and risks.
 
