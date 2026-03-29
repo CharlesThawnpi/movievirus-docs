@@ -25,7 +25,7 @@
 ## A.2 Version Block
 
 * Version: 1.1.0
-* Last Updated: 2026-03-27
+* Last Updated: 2026-03-29
 - Update Method: Section-based manual update
 - Update Rule: Prefer updating only the affected phase, module, feature, dependency, risk, queue item, or prompt source instead of regenerating the whole document
 
@@ -197,15 +197,16 @@
 - Fixed structural inconsistencies (IDs/modules)
 
 ### A.3.24 | 2026-03-29
+
   * Locked final Phase-1 execution decisions for enforcement-sensitive logic
   * Confirmed daily cap scope as per token + Telegram account
   * Standardized daily reset at 00:00 Asia/Yangon (MMT, UTC+06:30)
   * Standardized duplicate protection window to 60 seconds
   * Confirmed linked-account overflow policy as deny new linking and direct user to admin
   * Reconfirmed no expiry for standard plans
-  * Added failed validation lock rule: 5 failed attempts -> 5 minute cooldown
   * Confirmed Telegram Stars auto activation
   * Confirmed admin quota restore is allowed with dedicated audit logging
+  * Locked failed validation rule to 5 failed attempts -> 5 minute cooldown
 
 ### A.3.25 | 2026-03-29
   * Added strict decision-response contract for entitlement-related backend outcomes
@@ -673,8 +674,8 @@ Validation must prioritize linked account recognition over repeated token input.
 
 Core Logic:
   1. Check if telegram_user_id is linked to any token:
-     * IF linked: -> use linked token -> skip token input
-     * ELSE: -> request token -> validate token -> link account if slot available
+     * IF linked: → use linked token → skip token input
+     * ELSE: → request token → validate token → link account if slot available
   2. Enforce in exact order:
      * token existence
      * token status
@@ -696,7 +697,7 @@ Purpose:
   * remove repeated token entry
   * enforce fairness via quota + daily cap + controlled sharing
   * keep backend logic deterministic
-
+    
 ### C.2.2 Validation Rule
 
 Check:
@@ -713,12 +714,6 @@ Rules:
   * daily cap reset boundary must use Asia/Yangon timezone
   * daily cap resets at 00:00 MMT (UTC+06:30)
   * failed validation cooldown = 5 failed attempts -> 5 minute cooldown
-
-### C.2.3 Fair Use Protection
-- no deduction on failed validation
-- no deduction on file not found
-- no deduction on send failure
-- duplicate protection window
 
 ### C.2.4 Backend Core Decision Engine
 
@@ -1130,7 +1125,7 @@ STATE: payment_rejected
   * quota_effect: none
   * log_type: payment_rejected
 
-Rules:
+#### Rules
 
   * every state MUST map to exactly one status_code
   * every state MUST map to exactly one message_key
@@ -1251,7 +1246,7 @@ Rules:
 # C.6 REPORTING, HISTORY, AND AUDIT
 # =========================================================
 
-## C.6.1 Module 06: Reporting, History, and Audit
+### C.6.1 Admin Reporting
 
 Enforcement Update:
 
@@ -1282,7 +1277,7 @@ Linked Account Limit Rule:
   * denial must:
     * create a traceable log entry
     * preserve current linked-account assignments
-    * present a clear support-friendly message 
+    * present a clear support-friendly message
 
 ### C.6.2 User Self-History
 User should be able to inspect:
@@ -1389,6 +1384,7 @@ Bot MUST NOT enforce business rules independently.
 
   1. User selects file
   2. Bot calls: POST /request/validate
+
      Backend checks:
       * token existence
       * token status
@@ -1397,6 +1393,7 @@ Bot MUST NOT enforce business rules independently.
       * linked account eligibility
       * failed-attempt cooldown
       * duplicate guard
+
      Response:
       * approved / denied
       * status_code
@@ -1404,18 +1401,33 @@ Bot MUST NOT enforce business rules independently.
       * button_set_key
       * quota_effect
       * log_type
+
   3. IF approved:
-      * bot sends "Download via ..." link
-  4. User clicks link -> redirected to delivery bot
-  5. Delivery bot sends file with:
-      * expiration timer (3 minutes)
-      * auto-delete after timeout
-  6. After successful send:
+      * backend creates request_id
+      * quota_effect = none
+      * bot proceeds to delivery
+
+  4. Delivery bot sends file
+
+  5. On success:
       * bot calls: POST /request/commit-success
-  7. If send fails after 3 retries:
+      * backend:
+        * verifies idempotency
+        * deducts quota (once)
+        * updates daily usage
+
+  6. On failure:
       * bot calls: POST /request/commit-failure
-      * backend logs failure
-      * admin notified
+      * backend:
+        * logs failure
+        * no quota deduction
+
+Rules:
+
+  * validation and approval must not deduct quota
+  * only commit-success triggers deduction
+  * commit-success must be idempotent
+  * retries must not create additional deduction
 
 ### C.7.6 Secure File Delivery Design
 File delivery must use indirect method to reduce Telegram bot ban risk.
@@ -2822,6 +2834,13 @@ Purpose:
 
 Buttons must support configuration via backend/WebApp as an active implementation requirement.
 
+Rules:
+
+  * button sets must be reusable
+  * must be mapped to message_key or system state
+  * labels must be loaded through content keys, not hardcoded text
+  * WebApp should be able to control active/inactive state and order
+
 #### Table: button_templates
 
 Fields:
@@ -2885,7 +2904,7 @@ System must support dynamic configuration and dynamic content management via Web
 Fields:
 
   * id
-  * key (e.g., QUOTA_EXCEEDED, PAYMENT_PENDING, BTN_REQUEST_FILE_LABEL)
+  * key
   * lang (mm, en)
   * category
   * content
@@ -2894,36 +2913,26 @@ Fields:
   * updated_by
   * updated_at
 
-Purpose:
-
-  * allow admin to edit all user-facing messages
-  * support multilingual system
-  * allow safe updates without redeploy
-
 #### 2. button_templates
 
 Fields:
 
   * id
-  * button_key (e.g., BUY_PLAN)
-  * label_key (linked to message_templates)
-  * action_type (callback / link)
+  * button_key
+  * label_key
+  * action_type
   * action_payload_template
   * sort_order
   * is_active
   * updated_by
   * updated_at
 
-Purpose:
-
-  * allow admin to control button labels and behavior
-
 #### 3. button_sets
 
 Fields:
 
   * id
-  * set_key (e.g., PLAN_ACTIONS)
+  * set_key
   * description
   * is_active
   * updated_at
@@ -2938,10 +2947,6 @@ Fields:
   * sort_order
   * is_active
 
-Purpose:
-
-  * define which buttons appear in each context
-
 #### 5. content_change_logs
 
 Fields:
@@ -2955,17 +2960,12 @@ Fields:
   * changed_at
   * notes
 
-Purpose:
-
-  * preserve auditability for wording changes
-  * support rollback/review when content edits cause confusion
-
 #### 6. plan_definitions
 
 Fields:
 
   * id
-  * plan_key (starter, basic, etc.)
+  * plan_key
   * name
   * price
   * total_quota
@@ -2974,10 +2974,6 @@ Fields:
   * is_active
   * updated_by
   * updated_at
-
-Purpose:
-
-  * allow admin to change plans without code changes
 
 #### 7. system_settings
 
@@ -2993,7 +2989,6 @@ Examples:
   * duplicate_window_seconds = 60
   * max_delivery_retry = 3
   * validation_cooldown_seconds = 300
-  * payment_pending_expiry_hours = 48
   * daily_reset_timezone = Asia/Yangon
 
 #### 8. admin_audit_logs
@@ -3008,11 +3003,6 @@ Fields:
   * old_value
   * new_value
   * created_at
-
-Purpose:
-
-  * full traceability of admin actions
-  * prevent silent data corruption
 
 Rules:
 
@@ -4018,6 +4008,7 @@ Special-plan-only optional status:
   * TOKEN_EXPIRED
 
 Rules:
+
   * all denial reasons must be user-readable
   * send-failure events should notify requester and admin
   * final visible wording must come from message_key through the dynamic content system
@@ -4038,7 +4029,7 @@ Rules:
 
 All entitlement-related endpoints must return backend-decided state, not UI guesses.
 
-Validation, request, delivery, and payment endpoints should keep the normal API envelope, while returning one strict backend decision object inside `data.decision`.
+Validation, request, delivery, and payment endpoints should keep the normal API envelope, while returning one strict backend decision object inside response data.
 
 Required decision fields:
 
@@ -4048,7 +4039,7 @@ Required decision fields:
   * quota_effect
   * log_type
   * metadata (optional)
-
+    
 Recommended response shape:
 
     {
@@ -4095,6 +4086,8 @@ Rules:
   * quota_effect must be explicit so clients never guess whether quota changed
   * log_type must be explicit so support/audit interpretation stays consistent
   * metadata may enrich rendering and logging, but must not replace stable contract fields
+  * commit-success must be idempotent
+  * duplicate request logic must be enforced server-side, not by bot memory
 
 State authority rule:
   * only backend services may mutate token status, payment status, linked-account state, quota counters, approved-token linkage, and delivery-session state
