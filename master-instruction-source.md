@@ -119,14 +119,15 @@ Purpose:
 - Added token delivery rule and system health references
 
 ### A.4.9 | 2026-03-29
-* Locked final execution-critical decisions for Phase 1
-* Confirmed daily cap scope as per token + Telegram account
-* Standardized duplicate protection window to 60 seconds
-* Confirmed linked-account replacement as auto-replace-oldest
-* Standardized replacement cooldown to 10 minutes
-* Reconfirmed no expiry for normal plans
-* Confirmed Telegram Stars auto activation
-* Confirmed admin quota restore is allowed with audit logging
+  * Locked final execution-critical decisions for Phase 1
+  * Confirmed daily cap scope as per token + Telegram account
+  * Standardized daily cap reset at 00:00 Asia/Yangon (MMT, UTC+06:30)
+  * Standardized duplicate protection window to 60 seconds
+  * Confirmed linked-account overflow behavior as deny new linking and direct user to admin support
+  * Reconfirmed no expiry for normal plans
+  * Added failed validation protection: 5 failed attempts -> 5 minute cooldown
+  * Confirmed Telegram Stars auto activation
+  * Confirmed admin quota restore is allowed with audit logging
 
 ### A.4.10 | 2026-03-29
   * Strengthened multilingual content planning so all bot-facing text, menus, buttons, reminders, warnings, and notifications are treated as dynamic WebApp-managed content
@@ -401,29 +402,26 @@ When migrating from a live legacy MovieVirus VPS to a new VPS, treat the old VPS
   - validation entry point
 - All enforcement logic must be validated against backend/database, not Telegram session state.
 
-### B.14 Linked Account Replacement Cooldown
-- Per-token replacement cooldown must be enforced (default: 600 seconds)
-- Prevents two users from endlessly replacing each other
-- Stored as configurable system setting: replacement_cooldown_seconds
-
-Linked Account Replacement Behavior:
+### B.14 Linked Account Limit Handling
 
 When max linked accounts is reached:
-- New account linking must be denied by default
 
-Future-supported strategies (configurable):
-1. Admin reset (manual removal of all linked accounts)
-2. Replace-oldest-account:
-   - oldest linked account is removed automatically
-3. User self-reset (limited frequency, e.g., once per day)
+  * new account linking must be denied in Phase 1
+  * system must clearly tell user that linked account/device sharing limit is reached
+  * system should direct user to contact admin for recovery, reset, or support action
+  * denial must not consume quota
 
-All replacement actions must:
-- be logged in linked_account_change_logs
-- respect replacement cooldown
+Phase 1 rule:
+
+  * auto-replace-oldest is NOT active in Phase 1
+  * user self-replacement is NOT active in Phase 1
+  * admin reset/review remains allowed through WebApp
 
 Purpose:
-- prevent abuse
-- enable recovery for lost access
+
+  * keep sharing enforcement simple and predictable
+  * reduce accidental account displacement
+  * keep recovery/support under admin control in Phase 1
 
 ### B.15 System Health State
 System must support operational states:
@@ -598,17 +596,17 @@ Notes:
 
 Locked Phase-1 decisions:
 
-* daily cap scope = per token + Telegram account
-* normal plans = no time-based expiry
-* downgrade = not in-place; lower plan is purchased after current entitlement is exhausted
-* linked-account overflow handling = auto-replace-oldest
-* replacement cooldown = 10 minutes
-* duplicate protection window = 60 seconds
+  * daily cap scope = per token + Telegram account
+  * daily cap reset time = 00:00 Asia/Yangon (MMT, UTC+06:30)
+  * normal plans = no time-based expiry
+  * downgrade = not in-place; lower plan is purchased after current entitlement is exhausted
+  * linked-account overflow handling = deny new linking and instruct user to contact admin
+  * duplicate protection window = 60 seconds
+  * failed validation protection = 5 failed attempts -> 5 minute cooldown
 
 Purpose:
-
-* remove implementation ambiguity before coding
-* keep enforcement consistent across backend, WebApp, and Telegram bot flows
+  * remove implementation ambiguity before coding
+  * keep enforcement consistent across backend, WebApp, and Telegram bot flows
 
 ### D.1.2 Token Statuses
 Suggested statuses:
@@ -633,43 +631,25 @@ Suggested statuses:
 ## D.2 Module 02: File Request and Quota Enforcement
 
 ### D.2.1 Token Validation (Final Behavior)
+
 Validation Logic:
-1. IF telegram_user_id is already linked to token:
-   - DO NOT ask for token again
-   - allow access directly
-2. IF telegram_user_id is NOT linked:
-   - require token input
-   - validate token
-   - IF valid:
-       → proceed to linking logic
-3. Always enforce in this order:
-   - token exists
-   - token status allows use
-   - total quota remaining > 0
-   - daily cap not reached
-   - linked account rule
-4. Standard plans must NOT be blocked by time-based expiry.
-5. Optional expiry check is allowed only when plan_type is explicitly set to special.
-
-Purpose:
-- eliminate repeated token input
-- maintain strong entitlement enforcement
-- keep standard plan behavior quota-based, not date-based
-
-Phase-1 enforcement order should be:
-
-1. validate request identity / request_id
-2. validate token format and existence
-3. validate token status
-4. validate linked Telegram account state
-5. auto-link if allowed and slots remain
-6. if max linked accounts reached, apply auto-replace-oldest only if replacement cooldown allows
-7. validate total quota remaining
-8. validate daily cap for this token + Telegram account on system date
-9. validate duplicate protection window
-10. attempt delivery
-11. deduct quota only after confirmed successful delivery
-12. write usage and audit logs
+  1. IF telegram_user_id is already linked to token:
+     * DO NOT ask for token again
+     * allow access directly
+  2. IF telegram_user_id is NOT linked:
+     * require token input
+     * validate token
+     * IF valid: -> proceed to linking eligibility logic
+  3. Always enforce in this order:
+     * token exists
+     * token status allows use
+     * total quota remaining > 0
+     * daily cap not reached
+     * linked account rule
+  4. Standard plans must NOT be blocked by time-based expiry.
+  5. If validation failures reach 5 attempts within active protection window:
+     * apply 5 minute cooldown
+     * return a clear support-friendly denial message
 
 ### D.2.2.1 Quota Deduction Safety Rule
 
@@ -708,42 +688,47 @@ Purpose:
 - ensure audit traceability
 
 ### D.2.2 Linked Account Handling (Final Behavior)
+
 Rules:
-1. Each token has max linked accounts based on plan
-2. IF new user attempts access AND limit is reached:
-   - automatically replace the oldest linked account
-   - enforce per-token replacement cooldown (default: 600 seconds)
-   - log the replacement event
-3. System must:
-   - notify user that oldest device/account was replaced
-   - ensure transparency
-   - word notification carefully to not imply immediate reclaim is possible
-4. Admin can:
-   - manually reset, remove, or reassign linked accounts via WebApp
+  1. Each token has max linked accounts based on plan
+  2. IF telegram_user_id is already linked:
+     * allow normal validation flow
+  3. IF new user attempts access AND free slot exists:
+     * auto-link the Telegram account
+     * log the linking event
+  4. IF new user attempts access AND max linked accounts is already reached:
+     * deny new linking
+     * show linked account/device sharing limit reached message
+     * direct user to contact admin
+     * do NOT consume quota
+     * log denial reason
+  5. Admin can:
+     * manually reset, remove, or reassign linked accounts via WebApp
 
 Purpose:
-- allow flexible sharing
-- prevent hard blocking UX
-- maintain fairness through controlled slots
+
+  * allow controlled sharing within plan limits
+  * prevent silent account displacement
+  * keep recovery/admin support manageable in Phase 1
 
 ### D.2.2.1 Locked Daily Cap Rule
 
 Daily cap must be enforced per:
 
-* token_id
-* telegram_user_id
-* usage_date
+  * token_id
+  * telegram_user_id
+  * usage_date
 
 Rules:
 
-* one linked Telegram account cannot consume another linked account's daily allowance
-* daily cap resets at 00:00 using the system timezone
-* recommended system timezone: Asia/Yangon
+  * one linked Telegram account cannot consume another linked account's daily allowance
+  * daily cap resets at 00:00 using Asia/Yangon timezone
+  * implementation should treat reset timezone as MMT (UTC+06:30)
 
 Purpose:
 
-* keep controlled sharing fair
-* reduce user disputes around daily reset behavior
+  * keep controlled sharing fair
+  * reduce user disputes around daily reset behavior
 
 ### D.2.3 Fair Use Rule
 - successful file delivery consumes quota
@@ -753,21 +738,22 @@ Purpose:
 - duplicate requests in a short safe window may avoid double deduction
 - admin may restore quota when justified
 
-### D.2.3.1 Locked Replacement Rule
+### D.2.3.1 Locked Linked-Account Overflow Rule
 
 When a new Telegram account validates a token and max linked accounts is already reached:
 
-* Phase 1 behavior = auto-replace-oldest active linked account
-* replacement is allowed only when replacement cooldown has passed
-* replacement cooldown = 10 minutes per token
-* replaced account must be marked non-active and logged
-* replacement action must not consume quota
+  * Phase 1 behavior = deny new linking
+  * system must show linked account/device sharing limit reached
+  * system should direct user to contact admin
+  * no existing linked account should be auto-replaced
+  * denial must be logged
+  * denial must not consume quota
 
 Purpose:
 
-* keep account sharing controlled
-* support practical user recovery without manual admin work for normal cases
-
+  * preserve predictable account ownership
+  * reduce support disputes caused by silent account replacement
+  * keep recovery/admin actions explicit and traceable
 ### D.2.4 Backend Core Enforcement Order
 Backend must enforce request eligibility in one consistent order:
 
@@ -930,9 +916,20 @@ Failure:
 - plaintext delivered exactly once to user, then discarded
 
 ### D.5.2 Validation Protection
-- rate limiting
-- temporary lockout/cooldown
-- suspicious attempt logging
+
+  * rate limiting
+  * temporary lockout/cooldown
+  * suspicious attempt logging
+
+Locked Phase 1 rule:
+
+  * 5 failed token validation attempts -> 5 minute cooldown
+
+Implementation expectation:
+
+  * failed attempts should be logged with reason
+  * cooldown denial should return clear user-facing explanation
+  * cooldown should not consume quota
 
 ### D.5.3 Recovery Security
 - log linked-account additions, replacements, and resets
@@ -1419,12 +1416,11 @@ Token security rules:
 - plaintext token must be delivered to user exactly once then discarded from memory
 
 Linked account logic:
-- if Telegram account is already linked, allow normal validation
-- if not linked and slots remain, auto-link
-- if max linked accounts is reached, auto-replace oldest according to policy
-- per-token replacement cooldown must be enforced (default: 600 seconds)
-- future suggestions may include admin reset, limited self-reset, transfer code flow, and lost-device recovery
-- replaced user should be notified if reachable but notification should not imply immediate reclaim
+  * if Telegram account is already linked, allow normal validation
+  * if not linked and slots remain, auto-link
+  * if max linked accounts is reached, deny new linking and direct user to contact admin
+  * linked-account overflow denial must not consume quota
+  * future suggestions may include admin reset, limited self-reset, transfer code flow, and lost-device recovery
 
 Payment guidance:
 - support Telegram Stars and local manual payment
