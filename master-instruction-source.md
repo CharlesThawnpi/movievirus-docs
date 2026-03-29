@@ -123,11 +123,11 @@ Purpose:
   * Confirmed daily cap scope as per token + Telegram account
   * Standardized daily cap reset at 00:00 Asia/Yangon (MMT, UTC+06:30)
   * Standardized duplicate protection window to 60 seconds
-  * Confirmed linked-account overflow behavior as deny new linking and direct user to admin support
+  * Confirmed linked-account overflow behavior as deny new linking and direct user to contact admin
   * Reconfirmed no expiry for normal plans
-  * Added failed validation protection: 5 failed attempts -> 5 minute cooldown
   * Confirmed Telegram Stars auto activation
   * Confirmed admin quota restore is allowed with audit logging
+  * Locked failed validation protection to 5 failed attempts -> 5 minute cooldown
 
 ### A.4.10 | 2026-03-29
   * Strengthened multilingual content planning so all bot-facing text, menus, buttons, reminders, warnings, and notifications are treated as dynamic WebApp-managed content
@@ -152,6 +152,13 @@ Purpose:
   * Added idempotent commit rule to prevent double deduction
   * Defined partial-success handling (assume success if delivery completed but confirmation uncertain)
   * Confirmed no automatic quota refund by system; admin-only restoration with audit logging
+
+### A.4.14 | 2026-03-29
+  * Introduced Admin Actions & Recovery System for Phase 1
+  * Defined admin capabilities: quota restore, linked-account reset, token control, payment correction
+  * Locked admin behavior: no automatic refund, manual quota restore with audit
+  * Defined user-visibility rule for admin actions (silent by default)
+  * Planned admin action revert/undo system for Phase 2
 ---
 
 # =========================================================
@@ -619,11 +626,12 @@ Locked Phase-1 decisions:
   * daily cap reset time = 00:00 Asia/Yangon (MMT, UTC+06:30)
   * normal plans = no time-based expiry
   * downgrade = not in-place; lower plan is purchased after current entitlement is exhausted
-  * linked-account overflow handling = deny new linking and instruct user to contact admin
+  * linked-account overflow handling = deny new linking and direct user to contact admin
   * duplicate protection window = 60 seconds
   * failed validation protection = 5 failed attempts -> 5 minute cooldown
 
 Purpose:
+
   * remove implementation ambiguity before coding
   * keep enforcement consistent across backend, WebApp, and Telegram bot flows
 
@@ -775,36 +783,24 @@ Purpose:
   * keep recovery/admin actions explicit and traceable
     
 ### D.2.4 Backend Core Enforcement Order
+
 Backend must enforce request eligibility in one consistent order:
 
-1. Resolve access source:
-   - linked account lookup first
-   - token input path second
-2. Resolve token state:
-   - pending_activation → deny
-   - active → continue
-   - exhausted → deny (prompt to enter new token or purchase)
-   - suspended → deny
-   - revoked → deny
-3. Resolve quota:
-   - total quota remaining must be greater than zero
-4. Resolve daily limit:
-   - today's successful requests must be below plan daily cap
-5. Resolve linked-account policy:
-   - if account already linked → continue
-   - if not linked and slot available → link
-   - if not linked and full → replace oldest according to policy (with cooldown check)
-6. Resolve duplicate protection:
-   - same token + same telegram_user_id + same file within duplicate window
-   - do not deduct quota twice
-7. Resolve delivery:
-   - attempt delivery
-   - deduct quota only after confirmed success
-
-Purpose:
-- keep all entitlement decisions deterministic
-- prevent inconsistent rule ordering across endpoints
-- simplify backend and support reasoning
+  1. validate request identity / request_id
+  2. validate token format and existence
+  3. validate token status
+  4. validate linked Telegram account state
+  5. auto-link if allowed and slots remain
+  6. if max linked accounts reached:
+     * deny new linking
+     * return linked-account/device-sharing-limit-reached response
+     * direct user to contact admin
+  7. validate total quota remaining
+  8. validate daily cap for this token + Telegram account on Asia/Yangon date
+  9. validate duplicate protection window
+  10. attempt delivery
+  11. deduct quota only after confirmed successful delivery
+  12. write usage and audit logs
 
 ### D.2.4.1 Validation Response Contract Rule
 
@@ -867,35 +863,39 @@ Stability rules:
 
 ### D.3.1 Request Flow (Final)
 
-Flow:
+Search → Select File → Request File
 
-  1. User searches/selects file
-  2. Bot validates entitlement (token + quota + daily cap + linked account + cooldown)
-  3. IF denied:
-     * return response contract (status_code, message_key, button_set_key, etc.)
-     * STOP
-  4. IF approved:
-     * create request record
-     * DO NOT deduct quota yet
-     * return delivery instruction
-  5. Delivery bot sends file
-  6. IF delivery success:
-     * backend receives commit-success
-     * deduct quota (exactly once)
-     * update daily usage
-     * log success
-  7. IF delivery failure:
-     * backend receives commit-failure
-     * DO NOT deduct quota
-     * log failure
-     * allow retry
+IF telegram_user_id is linked:
+  → proceed
+ELSE:
+  → ask token
+  → validate
+  → link account if slot available
+  → deny and direct user to contact admin if linked-account limit is already reached
 
-Rules:
+Then:
+  → validate:
+    * token status
+    * total quota
+    * daily cap
+    * duplicate protection
+  → process request:
+    * send file (retry up to 3 times if failure)
 
-  * quota must NOT be deducted during validation or request creation
-  * quota must be deducted ONLY after confirmed successful delivery
-  * duplicate requests within safe window must not create additional deduction
+IF success:
+  * log usage
+  * deduct quota only once after confirmed successful delivery
 
+IF failure after retries:
+  * do NOT deduct quota
+  * notify user
+  * notify admin
+
+Duplicate Protection:
+
+  * same user + same file + short safe window
+  * must not create additional quota deduction
+    
 ### D.3.1.1 Locked Payment Activation Rule
 
 Telegram Stars:
@@ -1320,17 +1320,17 @@ Suggested menu:
 ## D.12 Module 12: Notifications and Messaging
 
 ### D.12.1 User Notifications
-- payment pending
-- payment approved
-- payment rejected
-- token activated
-- expiry warning (special plans only)
-- daily cap reached
-- quota exhausted
-- new linked account added
-- linked account replaced
-- reset completed
-- pending payment expiry warning
+  * payment pending
+  * payment approved
+  * payment rejected
+  * token activated
+  * expiry warning (special plans only)
+  * daily cap reached
+  * quota exhausted
+  * new linked account added
+  * linked-account limit reached
+  * reset completed
+  * pending payment expiry warning
 
 ### D.12.2 Admin Alerts
 - suspicious payment submission
@@ -1338,16 +1338,22 @@ Suggested menu:
 - unusual account linking activity
 - manual review backlog
 
-### D.12.3 Dynamic Message Delivery Rule
+### D.12.3 Message Rendering Contract
 
-Notifications and messages should be delivered using stable keys and dynamically loaded content.
+All bot-visible messages should be rendered from backend decision output.
+
+Rendering contract:
+
+  * status_code = enforcement/result meaning
+  * message_key = visible text lookup key
+  * button_set_key = visible action/button layout key
 
 Rules:
 
-  * the system should send status/context plus content key, not rely on hardcoded visible text
-  * notification wording should remain editable from the WebApp
-  * warning, reminder, and support-facing explanatory text should follow the same multilingual content structure
-  * wording changes must not change underlying enforcement logic or audit meaning
+  * bot should not assemble its own entitlement meaning from local guesses
+  * WebApp and bot should use the same backend decision contract where relevant
+  * Burmese and English wording should remain editable through the dynamic content system
+  * support/admin investigation should be able to trace a shown user message back to stable status_code and log_type
 
 ### D.12.4 Message Rendering Contract
 
