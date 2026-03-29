@@ -212,6 +212,15 @@
   * Expanded state-to-UX mapping from message/button only into full status/message/button/quota/log contract
   * Standardized API response planning so bot and WebApp render backend-decided results only
   * Improved audit/debug consistency for validation, request, payment, and delivery flows
+
+### A.3.26 | 2026-03-29
+  * Cleaned structural inconsistencies caused by mixed or partially pasted updates
+  * Removed outdated linked-account auto-replacement behavior from active implementation sections
+  * Reconfirmed standard plans as quota-based and non-expiring by default
+  * Standardized duplicate protection to 60 seconds and validation cooldown to 5 failed attempts -> 5 minute cooldown
+  * Promoted multilingual bot content, buttons, menus, reminders, warnings, and notifications into WebApp-managed dynamic content
+  * Added strict backend response-contract alignment for status_code, message_key, button_set_key, quota_effect, and log_type
+  * Corrected section placement so content management is added under the real existing admin module structure
 ---
 
 # =========================================================
@@ -631,6 +640,7 @@ Notes:
 - Optional expiry is reserved only for special-case plans, promos, or manual override scenarios
 
 ### C.1.2 Token Statuses
+
 Suggested statuses:
 
   * Active
@@ -639,6 +649,11 @@ Suggested statuses:
   * Suspended
   * Revoked
   * Exhausted
+
+Rules:
+
+  * standard quota-based plans should not rely on time-based expiry
+  * Expired is reserved for special-case plans, promos, manual overrides, or explicitly configured time-based entitlements
 
 ### C.1.3 Upgrade and Downgrade Policy
 - upgrade = immediate
@@ -669,8 +684,8 @@ Core Logic:
      * duplicate guard pre-check when relevant
   3. Linking rules:
      * auto-link if slot available
-     * deny linking if max linked accounts is already reached
-     * return support-friendly limit-reached response directing user to admin
+     * deny new linking if max linked accounts is already reached
+     * return support-friendly linked-account/device-sharing-limit-reached response
   4. Standard plans must not depend on time-based expiry checks.
   5. Optional expiry checks are allowed only for explicitly configured special-case entitlements.
   6. Failed validation protection:
@@ -681,14 +696,23 @@ Purpose:
   * remove repeated token entry
   * enforce fairness via quota + daily cap + controlled sharing
   * keep backend logic deterministic
-  * 
+
 ### C.2.2 Validation Rule
+
 Check:
-- token status
-- expiry
-- total quota remaining
-- daily cap remaining
-- linked-account eligibility
+
+  * token existence
+  * token status
+  * total quota remaining
+  * daily cap remaining
+  * linked-account eligibility
+
+Rules:
+
+  * standard plans should not be denied by normal time-based expiry
+  * daily cap reset boundary must use Asia/Yangon timezone
+  * daily cap resets at 00:00 MMT (UTC+06:30)
+  * failed validation cooldown = 5 failed attempts -> 5 minute cooldown
 
 ### C.2.3 Fair Use Protection
 - no deduction on failed validation
@@ -697,48 +721,53 @@ Check:
 - duplicate protection window
 
 ### C.2.4 Backend Core Decision Engine
+
 The backend must be the only authority for entitlement decisions.
 
 Decision order per request:
-1. Resolve actor
-   - identify telegram_user_id
-   - identify whether access comes from linked-account path or token-input path
-2. Resolve entitlement
-   - find token
-   - reject if token missing
-   - reject if status is not usable
-3. Resolve quota
-   - reject if total_quota_remaining <= 0
-   - reject if daily cap already reached for current date
-4. Resolve sharing rule
-   - if user linked → continue
-   - if not linked:
-     - link if slot available
-     - else replace oldest linked account according to plan policy
-     - log replacement
-5. Resolve duplicate guard
-   - same token + same telegram_user_id + same file within safe window
-   - return duplicate_ignored and do not deduct
-6. Resolve delivery attempt
-   - create request record
-   - issue delivery payload
-   - on final success:
-     - deduct quota
-     - increment daily counter
-     - log delivered event
-   - on failure:
-     - log failure
-     - do not deduct
-7. Resolve post-commit reactions
-   - quota reminder at 5 left
-   - quota reminder at 1 left
-   - exhausted action prompt at 0 left
-   - user transparency history update
+  1. Resolve actor
+     * identify telegram_user_id
+     * identify whether access comes from linked-account path or token-input path
+  2. Resolve entitlement
+     * find token
+     * reject if token missing
+     * reject if status is not usable
+  3. Resolve quota
+     * reject if total_quota_remaining <= 0
+     * reject if daily cap already reached for current date in Asia/Yangon timezone
+  4. Resolve sharing rule
+     * if user linked -> continue
+     * if not linked:
+       * link if slot available
+       * else deny new linking
+       * return linked-account limit reached response
+       * do not change existing linked accounts
+  5. Resolve validation-abuse protection
+     * if failed-attempt cooldown is active -> deny with cooldown status
+  6. Resolve duplicate guard
+     * same token + same telegram_user_id + same file within safe window
+     * return duplicate_ignored and do not deduct
+  7. Resolve delivery attempt
+     * create request record
+     * issue delivery payload
+     * on final success:
+       * deduct quota
+       * increment daily counter
+       * log delivered event
+     * on failure:
+       * log failure
+       * do not deduct
+  8. Resolve post-commit reactions
+     * quota reminder at 5 left
+     * quota reminder at 1 left
+     * exhausted action prompt at 0 left
+     * user transparency history update
 
 Purpose:
-- make the request engine predictable
-- keep all critical rules in one backend flow
-- reduce implementation drift across modules
+
+  * make the request engine predictable
+  * keep all critical rules in one backend flow
+  * reduce implementation drift across modules
 
 ### C.2.5 Telegram Role Limitation
 Telegram bot is not a membership system.
@@ -944,18 +973,14 @@ All backend states must deterministically map to one stable decision contract.
 
 This mapping must be centralized and consistent across all endpoints.
 
-* * *
-
 #### Core Mapping Structure
 
 Each system state must define:
 
 STATE:
-
   * internal backend state
 
 OUTPUT:
-
   * status_code
   * message_key
   * button_set_key
@@ -963,10 +988,7 @@ OUTPUT:
   * log_type
 
 Optional:
-
   * metadata
-
-* * *
 
 #### Mapping Table (Phase 1)
 
@@ -993,16 +1015,7 @@ STATE: token_linked_success
   * quota_effect: none
   * log_type: linked_account_added
 
-* * *
-
 ##### 2. PLAN / ACCESS CONTROL
-
-STATE: no_active_plan
-  * status_code: NO_ACTIVE_PLAN
-  * message_key: NO_ACTIVE_PLAN
-  * button_set_key: PLAN_PURCHASE
-  * quota_effect: none
-  * log_type: validation_denied
 
 STATE: quota_exhausted
   * status_code: TOKEN_EXHAUSTED
@@ -1032,8 +1045,6 @@ STATE: validation_cooldown_blocked
   * quota_effect: none
   * log_type: validation_blocked
 
-* * *
-
 ##### 3. REMINDERS
 
 STATE: quota_5_left
@@ -1056,8 +1067,6 @@ STATE: quota_0_left
   * button_set_key: PLAN_PURCHASE
   * quota_effect: none
   * log_type: reminder_sent
-
-* * *
 
 ##### 4. REQUEST FLOW
 
@@ -1082,8 +1091,6 @@ STATE: duplicate_ignored
   * quota_effect: none
   * log_type: duplicate_ignored
 
-* * *
-
 ##### 5. DELIVERY
 
 STATE: delivery_success
@@ -1100,16 +1107,7 @@ STATE: delivery_failed
   * quota_effect: none
   * log_type: delivery_failed
 
-* * *
-
 ##### 6. PAYMENT
-
-STATE: plan_select
-  * status_code: PLAN_SELECTION_READY
-  * message_key: PLAN_SELECT
-  * button_set_key: PLAN_LIST
-  * quota_effect: none
-  * log_type: payment_flow
 
 STATE: payment_submitted
   * status_code: PAYMENT_SUBMITTED
@@ -1132,27 +1130,7 @@ STATE: payment_rejected
   * quota_effect: none
   * log_type: payment_rejected
 
-* * *
-
-##### 7. STATUS / TRANSPARENCY
-
-STATE: view_plan
-  * status_code: VIEW_PLAN
-  * message_key: CURRENT_PLAN
-  * button_set_key: PLAN_ACTIONS
-  * quota_effect: none
-  * log_type: transparency_view
-
-STATE: view_usage
-  * status_code: VIEW_USAGE
-  * message_key: STATUS_HISTORY
-  * button_set_key: BACK
-  * quota_effect: none
-  * log_type: transparency_view
-
-* * *
-
-#### Rules
+Rules:
 
   * every state MUST map to exactly one status_code
   * every state MUST map to exactly one message_key
@@ -1168,9 +1146,6 @@ Purpose:
   * ensure predictable behavior
   * standardize auditing and support interpretation
   * simplify debugging and future API expansion
-### C.3.4 Same Person Policy
-Do not try to prove same-human identity. Enforce slot policy only.
-
 ---
 
 # =========================================================
@@ -1276,837 +1251,10 @@ Rules:
 # C.6 REPORTING, HISTORY, AND AUDIT
 # =========================================================
 
-## C.6 Module 06: Reporting, History, and Audit
-
-### C.6.1 Admin Reporting
-
-Purpose:
-Ensure all MovieVirus deployments (VPS + codebase) follow a consistent, scalable, and maintainable structure to prevent disorder, debugging difficulty, and deployment risk.
-
-Core Rules:
-
-- Every component must have a predefined folder location.
-- No random file placement in root or unrelated directories.
-- Separate concerns clearly: bot logic, API, database, config, logs, scripts.
-- Environment-specific files must be isolated (dev / staging / production ready).
-- All paths must be predictable for automation and future scaling.
-
----
-
-#### A.5.2.1 Root Project Structure (Mandatory)
-
-All VPS deployments must follow this base structure:
-
-/movievirus/
-├── app/                  # Core application logic
-├── bot/                  # Telegram bot handlers & flows
-├── api/                  # Internal or external API layer
-├── services/             # Business logic services (quota, token, validation)
-├── database/             # DB models, migrations, seeders
-├── config/               # Environment configs (non-secret templates only)
-├── scripts/              # Admin scripts, cron jobs, utilities
-├── logs/                 # System logs (runtime, errors, audit exports)
-├── storage/              # Temporary or persistent file storage
-├── backups/              # DB backups and export snapshots
-├── tests/                # Testing (future phase)
-├── docs/                 # Local documentation (optional sync from master docs)
-└── main_entry/           # Entry point (bot runner / app bootstrap)
-
-Rules:
-- No logic files allowed in root directory.
-- Root should only contain folder structure + minimal bootstrap files.
-- All modules must map into one of the above directories.
-
----
-
-#### A.5.2.2 Module-Based Folder Mapping
-
-Each major system module must live in a dedicated structure:
-
-Example:
-
-/services/token/
-/services/quota/
-/services/linked_accounts/
-/services/payment/
-/services/request/
-/services/admin/
-
-Rules:
-- One module = one folder
-- Each module must contain:
-  - logic
-  - validators
-  - helpers (if needed)
-- Avoid cross-module file scattering
-
----
-
-#### A.5.2.3 Bot Structure Standardization
-
-/bot/ must follow:
-
-/bot/
-├── handlers/        # Command and message handlers
-├── flows/           # Step-by-step user flows (request, payment, etc.)
-├── middlewares/     # Rate limit, validation, logging
-├── keyboards/       # Telegram UI buttons
-├── messages/        # Text templates (Burmese-first, EN optional)
-└── routers/         # Routing logic
-
-Rules:
-- No business logic inside handlers (must call services/)
-- Flows must be reusable and modular
-
----
-
-#### A.5.2.4 Config & Secrets Handling
-
-/config/
-- config.template.json (or .env.example)
-- NO secrets stored in repo or plain files
-
-Rules:
-- Real secrets must be injected via environment variables
-- Separate:
-  - system config
-  - feature flags
-  - environment configs
-
----
-
-#### A.5.2.5 Logs & Audit Separation
-
-/logs/
-- app.log
-- error.log
-- security.log
-- request.log
-
-Rules:
-- Logs must not mix with database records
-- Critical actions must still be stored in DB (logs are not source of truth)
-
----
-
-#### A.5.2.6 Script & Automation Rules
-
-/scripts/
-- backup.sh
-- cleanup.sh
-- migrate.sh
-- deploy.sh
-
-Rules:
-- All manual VPS commands should be converted into reusable scripts
-- Avoid undocumented one-time commands
-
----
-
-#### A.5.2.7 Naming Conventions
-
-- Use lowercase_with_underscores for folders
-- Use clear module names (token_service, quota_service)
-- Avoid abbreviations unless standard
-
----
-
-#### A.5.2.8 Enforcement Rule
-
-Any new feature, module, or implementation MUST:
-- Declare its folder placement before coding
-- Follow this structure strictly
-- Be rejected/refactored if violating structure
-
----
-
-Impact:
-
-- Prevents messy VPS deployments
-- Enables faster debugging and onboarding
-- Supports scaling into multi-service architecture later
-- Ensures consistency across future developers and automation tools
-
-Dependencies:
-- Applies to all modules (M01–Mxx)
-- Required before Phase 2 expansion
-
-Risks:
-- RSK-NEW-01: Developers bypass structure → mitigated via enforcement rule
-- RSK-NEW-02: Over-structuring early → mitigated by keeping Phase 1 minimal
-
-Future Additions:
-- Containerization (Docker structure alignment)
-- Multi-instance deployment structure
-- CI/CD pipeline directory alignment
-📘 DOCUMENT A — Master Instruction Source
-We add enforcement so GPT always respects this structure when generating implementation guidance
-
-
-
-2) Replace the existing section
-Replace ### D.8.3 Content Storage Rule with:
-
-### D.8.3 Content Storage Rule
-
-Store all user-facing bot/UI content by stable content key with Burmese and English variants.
-
-This includes:
-
-  * bot messages
-  * menus
-  * button labels
-  * inline button text
-  * reminders
-  * notifications
-  * warnings
-  * payment instructions
-  * request-flow prompts
-  * help text
-  * status text
-
-Rules:
-
-  * code should reference stable content keys, not hardcoded visible text
-  * Burmese-first content should remain the default, with English toggle support
-  * content should be editable through the WebApp/admin system instead of requiring code edits for wording changes
-  * missing English content may fall back to Burmese
-  * missing content keys should return a safe admin-visible fallback path instead of silent failure
-3) Add new subsection
-Add ### D.8.4 Dynamic WebApp-Controlled Content Rule under ### D.8.3 Content Storage Rule
-
-### D.8.4 Dynamic WebApp-Controlled Content Rule
-
-All user-bot communication content should be treated as operational content managed from the WebApp, not as fixed code text.
-
-Purpose:
-
-  * allow wording updates without redeploy
-  * improve Burmese/English maintenance
-  * reduce repeated code edits for UX/content changes
-  * support future moderation, review, and content-version workflows
-
-Planning rule:
-
-  * when proposing new bot features, also define the required content keys and editable content groups
-4) Add new subsection
-Add ### D.9.4 Content and Localization Management under ### D.9.3 Review and Recovery Controls
-
-### D.9.4 Content and Localization Management
-
-Admin controls should also include WebApp-based content management for all user-facing bot/UI text.
-
-This should cover:
-
-  * message/content key list
-  * Burmese content editing
-  * English content editing
-  * button label editing
-  * menu label editing
-  * reminder/notification wording
-  * warning and denial wording
-  * payment instruction wording
-  * preview before publish where practical
-  * change history where practical
-
-Rules:
-
-  * content changes should not require code deployment
-  * visible text should not be treated as hardcoded business logic
-  * critical system meaning should remain attached to stable keys/status codes even if wording changes
-    
-5) Add new subsection
-Add ### D.12.3 Dynamic Message Delivery Rule under ### D.12.2 Admin Alerts
-
-### D.12.3 Dynamic Message Delivery Rule
-
-Notifications and messages should be delivered using stable keys and dynamically loaded content.
-
-Rules:
-
-  * the system should send status/context plus content key, not rely on hardcoded visible text
-  * notification wording should remain editable from the WebApp
-  * warning, reminder, and support-facing explanatory text should follow the same multilingual content structure
-  * wording changes must not change underlying enforcement logic or audit meaning
-DOCUMENT B — Master Implementation Plan
-
-7) Replace the existing section
-Replace ### C.8.2 Content Storage Rule with:
-
-### C.8.2 Content Storage Rule
-
-Store all user-facing bot/UI content by stable content key with Burmese and English variants.
-
-This includes:
-
-  * bot messages
-  * status messages
-  * denial messages
-  * menus
-  * button labels
-  * inline keyboard labels
-  * reminders
-  * notifications
-  * warnings
-  * payment instructions
-  * request-flow prompts
-  * help/support text
-
-Rules:
-
-  * visible text must not be hardcoded as the primary runtime source
-  * backend/bot should reference stable keys and load display content dynamically
-  * Burmese should remain the default language path
-  * English should be supported through language preference / toggle
-  * missing translations should fall back safely
-8) Add new subsection
-Add ### C.8.3 Dynamic Content Governance Rule under ### C.8.2 Content Storage Rule
-
-### C.8.3 Dynamic Content Governance Rule
-
-All bot-user visible content must be editable through the WebApp/admin content system without requiring code changes or redeployment for normal wording updates.
-
-Scope:
-
-  * bot menus
-  * button labels
-  * request prompts
-  * payment instructions
-  * warnings
-  * reminders
-  * notification text
-  * success/failure explanations
-  * support/help text
-
-Rules:
-
-  * code owns behavior and key selection
-  * content system owns visible wording
-  * business logic must not depend on exact visible sentence text
-  * audit and status contracts must remain tied to stable codes/keys
-    
-9) Update admin scope
-Replace the bullet list under ### C.9.5 WebApp Admin System Scope with this version:
-
-Phase 1 WebApp scope:
-
-  * dashboard overview
-  * plan management
-  * token management
-  * member/user lookup
-  * linked-account management
-  * payment review and approval
-  * quota adjustment
-  * request history lookup
-  * audit log review
-  * media catalog management
-  * content/localization management
-10) Add new admin screen
-
-### C.9.16 Content and Localization Management Screen
-
-Content / Localization screen must support:
-
-  * list content keys
-  * filter by category
-  * search by key
-  * edit Burmese content
-  * edit English content
-  * edit menu labels
-  * edit button labels
-  * edit notification/reminder text
-  * edit warning/denial text
-  * edit payment instruction text
-  * preview rendered content where practical
-  * activate/deactivate non-critical content entries where appropriate
-  * inspect content change history where available
-
-Recommended categories:
-
-  * system_messages
-  * request_flow_messages
-  * payment_messages
-  * warning_messages
-  * reminder_messages
-  * notification_messages
-  * menu_labels
-  * button_labels
-  * help_and_support_messages
-
-Rules:
-
-  * content editing must not bypass stable key usage
-  * content publishing must not require app redeploy for normal text changes
-  * critical enforcement outcomes must remain mapped to backend status codes and message keys
-  * content changes should be auditable
-
-Purpose:
-
-  * centralize UX wording control
-  * reduce hardcoded text debt
-  * support Burmese-first operation with English toggle
-  * allow faster support and product iteration
-    
-11) Promote button customization from future-only to active requirement
-
-### C.10.16 Button Configuration (WebApp-Controlled)
-
-Buttons must support configuration via backend/WebApp as an active implementation requirement.
-
-#### Table: button_templates
-
-Fields:
-
-  * id
-  * button_key
-  * label_key
-  * action_type
-  * action_payload_template
-  * sort_order
-  * is_active
-  * created_at
-  * updated_at
-
-Purpose:
-
-  * allow admin to customize:
-    * button labels
-    * ordering
-    * visibility
-    * reusable action definitions
-
-* * *
-
-#### Button Set Logic (Runtime)
-
-Backend should define button sets.
-
-Examples:
-
-  * HOME_MENU
-  * SEARCH_RESULTS
-  * PLAN_LIST
-  * QUOTA_EXCEEDED
-  * TOKEN_REQUIRED
-
-Each set contains:
-
-  * ordered list of button types
-
-* * *
-
-#### Example Button Set
-
-QUOTA_EXCEEDED:
-
-  * BUY_PLAN
-  * VIEW_PLAN
-  * HELP
-
-* * *
-
-Rules:
-
-  * button sets must be reusable
-  * must be mapped to message_key or system state
-  * labels must be loaded through content keys, not hardcoded text
-  * WebApp should be able to control active/inactive state and order
-12) Replace the existing section
-Replace ### C.10.17 Admin Configuration Data Model with:
-
-### C.10.17 Admin Configuration Data Model
-
-System must support dynamic configuration and dynamic content management via WebApp.
-
-* * *
-
-#### 1. message_templates
-
-Fields:
-
-  * id
-  * key (e.g., QUOTA_EXCEEDED, PAYMENT_PENDING, BTN_REQUEST_FILE_LABEL)
-  * lang (mm, en)
-  * category
-  * content
-  * is_active
-  * version
-  * updated_by
-  * updated_at
-
-Purpose:
-
-  * allow admin to edit all user-facing messages
-  * support multilingual system
-  * allow safe updates without redeploy
-
-* * *
-
-#### 2. button_templates
-
-Fields:
-
-  * id
-  * button_key (e.g., BUY_PLAN)
-  * label_key (linked to message_templates)
-  * action_type (callback / link)
-  * action_payload_template
-  * sort_order
-  * is_active
-  * updated_by
-  * updated_at
-
-Purpose:
-
-  * allow admin to control button labels and behavior
-
-* * *
-
-#### 3. button_sets
-
-Fields:
-
-  * id
-  * set_key (e.g., PLAN_ACTIONS)
-  * description
-  * is_active
-  * updated_at
-
-* * *
-
-#### 4. button_set_items
-
-Fields:
-
-  * id
-  * set_id
-  * button_key
-  * sort_order
-  * is_active
-
-Purpose:
-
-  * define which buttons appear in each context
-
-* * *
-
-#### 5. content_change_logs
-
-Fields:
-
-  * id
-  * content_key
-  * lang
-  * old_content
-  * new_content
-  * changed_by_admin_id
-  * changed_at
-  * notes
-
-Purpose:
-
-  * preserve auditability for wording changes
-  * support rollback/review when content edits cause confusion
-
-* * *
-
-#### 6. plan_definitions
-
-Fields:
-
-  * id
-  * plan_key (starter, basic, etc.)
-  * name
-  * price
-  * total_quota
-  * daily_cap
-  * max_linked_accounts
-  * is_active
-  * updated_by
-  * updated_at
-
-Purpose:
-
-  * allow admin to change plans without code changes
-
-* * *
-
-#### 7. system_settings
-
-Fields:
-
-  * key
-  * value
-  * description
-  * updated_at
-
-Examples:
-
-  * duplicate_window_seconds = 60
-  * max_delivery_retry = 3
-  * replacement_cooldown_seconds = 600
-  * payment_pending_expiry_hours = 48
-
-* * *
-
-#### 8. admin_audit_logs
-
-Fields:
-
-  * id
-  * admin_id
-  * action_type
-  * target_type
-  * target_id
-  * old_value
-  * new_value
-  * created_at
-
-Purpose:
-
-  * full traceability of admin actions
-  * prevent silent data corruption
-
-Rules:
-
-  * all user-facing content used by bot flows should come from this configuration/content layer
-  * all wording changes should remain separate from enforcement logic
-  * content keys must be stable even if visible wording changes
-13) Add messaging rule
-Add ### C.12.4 Dynamic Content Delivery Rule under ### C.12.3 Admin WebApp Alerts
-
-### C.12.4 Dynamic Content Delivery Rule
-
-All notifications and bot-visible messages must be rendered from stable content keys through the dynamic content system.
-
-Rules:
-
-  * backend should return status code / message_key / button_set rather than relying on hardcoded visible text
-  * reminders, warnings, payment messages, and request-flow messages must follow the same system
-  * multilingual rendering should occur at runtime using user language preference and safe fallback behavior
-  * wording changes must not require bot redeploy for normal operational updates
-14) Strengthen API/status contract
-Replace the Rules: block under ### C.14.13 Notifications and Status Message Contract with:
-
-Rules:
-  * all denial reasons must be user-readable
-  * replacement events should notify both the incoming requester and replaced account when reachable
-  * send-failure events should notify requester and admin
-  * delivery link expiry/delete timing should be made visible to user
-  * bot/UI should map status codes to stable message keys, not depend on hardcoded visible sentences
-  * final visible wording for status, warning, reminder, and action prompts should come from the dynamic content system
-Optional implementation advice
-For this specific requirement, the most important planning shift is this: treat text as managed content, not code. The backend should decide which key/status/button set to use, while the WebApp controls the Burmese/English wording. That keeps enforcement stable while making UX fully editable. This matches the already-existing message-key and button-set direction in the current implementation plan, so this update is an alignment and promotion of an existing pattern, not a conflicting redesign. 
-
-Summary
-Affected documents: A and B.
-Affected sections: A.4, D.8.3, new D.8.4, new D.9.4, new D.12.3, and B.A.3, C.8.2, new C.8.3, C.9.5, new C.9.16, C.10.16, C.10.17, new C.12.4, C.14.13. 
-
-Changelog/version status: add A.4.10 in the Master Instruction Source and A.3.25 in the Master Implementation Plan. The version numbers can remain unchanged unless you want to bump them manually in a separate pass. 
-
-
-### B.14 Linked Account Limit Handling
-
-When max linked accounts is reached:
-
-  * new account linking must be denied in Phase 1
-  * system must clearly tell user that linked account/device sharing limit is reached
-  * system should direct user to contact admin for recovery, reset, or support action
-  * denial must not consume quota
-
-Phase 1 rule:
-
-  * auto-replace-oldest is NOT active in Phase 1
-  * user self-replacement is NOT active in Phase 1
-  * admin reset/review remains allowed through WebApp
-
-Purpose:
-
-  * keep sharing enforcement simple and predictable
-  * reduce accidental account displacement
-  * keep recovery/support under admin control in Phase 1
-3) Update locked entitlement decisions
-Replace ### D.1.1.2 Phase-1 Locked Entitlement Decisions with:
-
-### D.1.1.2 Phase-1 Locked Entitlement Decisions
-
-Locked Phase-1 decisions:
-
-  * daily cap scope = per token + Telegram account
-  * daily cap reset time = 00:00 Asia/Yangon (MMT, UTC+06:30)
-  * normal plans = no time-based expiry
-  * downgrade = not in-place; lower plan is purchased after current entitlement is exhausted
-  * linked-account overflow handling = deny new linking and instruct user to contact admin
-  * duplicate protection window = 60 seconds
-  * failed validation protection = 5 failed attempts -> 5 minute cooldown
-
-Purpose:
-  * remove implementation ambiguity before coding
-  * keep enforcement consistent across backend, WebApp, and Telegram bot flows
-4) Update token validation order
-Replace ### D.2.1 Token Validation (Final Behavior) with:
-
-### D.2.1 Token Validation (Final Behavior)
-
-Validation Logic:
-  1. IF telegram_user_id is already linked to token:
-     * DO NOT ask for token again
-     * allow access directly
-  2. IF telegram_user_id is NOT linked:
-     * require token input
-     * validate token
-     * IF valid: -> proceed to linking eligibility logic
-  3. Always enforce in this order:
-     * token exists
-     * token status allows use
-     * total quota remaining > 0
-     * daily cap not reached
-     * linked account rule
-  4. Standard plans must NOT be blocked by time-based expiry.
-  5. If validation failures reach 5 attempts within active protection window:
-     * apply 5 minute cooldown
-     * return a clear support-friendly denial message
-5) Update linked-account handling
-Replace ### D.2.2 Linked Account Handling (Final Behavior) with:
-
-### D.2.2 Linked Account Handling (Final Behavior)
-
-Rules:
-  1. Each token has max linked accounts based on plan
-  2. IF telegram_user_id is already linked:
-     * allow normal validation flow
-  3. IF new user attempts access AND free slot exists:
-     * auto-link the Telegram account
-     * log the linking event
-  4. IF new user attempts access AND max linked accounts is already reached:
-     * deny new linking
-     * show linked account/device sharing limit reached message
-     * direct user to contact admin
-     * do NOT consume quota
-     * log denial reason
-  5. Admin can:
-     * manually reset, remove, or reassign linked accounts via WebApp
-
-Purpose:
-
-  * allow controlled sharing within plan limits
-  * prevent silent account displacement
-  * keep recovery/admin support manageable in Phase 1
-6) Tighten daily reset timezone
-Replace ### D.2.2.1 Locked Daily Cap Rule with:
-
-### D.2.2.1 Locked Daily Cap Rule
-
-Daily cap must be enforced per:
-
-  * token_id
-  * telegram_user_id
-  * usage_date
-
-Rules:
-
-  * one linked Telegram account cannot consume another linked account's daily allowance
-  * daily cap resets at 00:00 using Asia/Yangon timezone
-  * implementation should treat reset timezone as MMT (UTC+06:30)
-
-Purpose:
-
-  * keep controlled sharing fair
-  * reduce user disputes around daily reset behavior
-7) Replace outdated replacement rule
-Replace ### D.2.3.1 Locked Replacement Rule with:
-
-### D.2.3.1 Locked Linked-Account Overflow Rule
-
-When a new Telegram account validates a token and max linked accounts is already reached:
-
-  * Phase 1 behavior = deny new linking
-  * system must show linked account/device sharing limit reached
-  * system should direct user to contact admin
-  * no existing linked account should be auto-replaced
-  * denial must be logged
-  * denial must not consume quota
-
-Purpose:
-
-  * preserve predictable account ownership
-  * reduce support disputes caused by silent account replacement
-  * keep recovery/admin actions explicit and traceable
-8) Strengthen failed-attempt protection
-Replace ### D.5.2 Validation Protection with:
-
-### D.5.2 Validation Protection
-
-  * rate limiting
-  * temporary lockout/cooldown
-  * suspicious attempt logging
-
-Locked Phase 1 rule:
-
-  * 5 failed token validation attempts -> 5 minute cooldown
-
-Implementation expectation:
-
-  * failed attempts should be logged with reason
-  * cooldown denial should return clear user-facing explanation
-  * cooldown should not consume quota
-9) Update compiled guidance bullets near the bottom
-In the final compiled guidance block, replace the current Linked account logic: bullet list with:
-
-Linked account logic:
-  * if Telegram account is already linked, allow normal validation
-  * if not linked and slots remain, auto-link
-  * if max linked accounts is reached, deny new linking and direct user to contact admin
-  * linked-account overflow denial must not consume quota
-  * future suggestions may include admin reset, limited self-reset, transfer code flow, and lost-device recovery
-
-
-### C.1.2 Token Statuses
-
-Suggested statuses:
-
-  * Active
-  * Pending Activation
-  * Expired (special plans only)
-  * Suspended
-  * Revoked
-  * Exhausted
-12) Update validation engine
-Replace ### C.2.1 Token & Linked Account Validation Engine with:
-
-### C.2.1 Token & Linked Account Validation Engine
-
-Validation must prioritize linked account recognition over repeated token input.
-
-Core Logic:
-  1. Check if telegram_user_id is linked to any token:
-     * IF linked: -> use linked token -> skip token input
-     * ELSE: -> request token -> validate token -> link account if slot available
-  2. Enforce in exact order:
-     * token existence
-     * token status
-     * total quota remaining
-     * daily cap remaining
-     * linked account eligibility
-     * duplicate guard pre-check when relevant
-  3. Linking rules:
-     * auto-link if slot available
-     * deny linking if max linked accounts is already reached
-     * return support-friendly limit-reached response directing user to admin
-  4. Standard plans must not depend on time-based expiry checks.
-  5. Optional expiry checks are allowed only for explicitly configured special-case entitlements.
-  6. Failed validation protection:
-     * 5 failed attempts -> 5 minute cooldown
-
-Purpose:
-
-  * remove repeated token entry
-  * enforce fairness via quota + daily cap + controlled sharing
-  * keep backend logic deterministic
-13) Remove replacement contradiction in admin reporting
-Replace the enforcement block inside ### C.6.1 Admin Reporting from Enforcement Update: down to * user must be informed of replacement action with:
+## C.6.1 Module 06: Reporting, History, and Audit
 
 Enforcement Update:
+
   * max_linked_accounts must be strictly enforced
   * IF limit reached:
     * deny new account linking
@@ -2115,24 +1263,26 @@ Enforcement Update:
   * linking does NOT consume quota
 
 Admin should be able to inspect:
-- payment history
-- request history
-- file delivery history
-- linked-account history
-- account reset/replacement history
-- plan change history
-- quota adjustment history
-- suspicious activity history
-- admin action history
 
-Linked Account Overflow Rule:
+  * payment history
+  * request history
+  * file delivery history
+  * linked-account history
+  * account reset/recovery history
+  * plan change history
+  * quota adjustment history
+  * suspicious activity history
+  * admin action history
+
+Linked Account Limit Rule:
+
   * when max_linked_accounts limit is reached:
     * system must deny new linking in Phase 1
     * no existing linked account should be auto-replaced
   * denial must:
     * create a traceable log entry
     * preserve current linked-account assignments
-    * present a clear support-friendly message
+    * present a clear support-friendly message 
 
 ### C.6.2 User Self-History
 User should be able to inspect:
