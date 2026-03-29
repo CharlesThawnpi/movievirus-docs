@@ -1344,24 +1344,28 @@ Rules:
 ## D.10 Module 10: Database Design
 
 ### D.10.1 Core Entities
-- plans
+
+- members
 - tokens
-- token_linked_accounts
-- token_usage_logs
-- daily_usage_counters
+- plans
+- linked_accounts
+- daily_usage
+- request_logs
+- usage_logs
+- media_items
+- episodes
+- media_files
+- payments
+- admin_users
+- admin_action_logs
 
 ### D.10.2 Extended Entities
-- token_transfer_requests
-- token_account_change_logs
-- payment_transactions
-- payment_review_logs
-- subscription_plan_change_logs
-- admin_action_logs
-- token_verification_attempt_logs
-- user_language_preferences
-- notification_logs
-- token_reminder_logs
-- quota_adjustment_logs
+
+- message_templates
+- button_templates
+- button_sets
+- button_set_items
+- system_settings
 
 ### D.10.3 Legacy Migration Database Rule
 For legacy migration, prefer PostgreSQL as the target database and use normalized target entities instead of reusing the legacy SQLite schema directly.
