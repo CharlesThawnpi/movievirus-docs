@@ -175,6 +175,12 @@ Purpose:
 * Replaced outdated compiled-instruction ID examples with real numbering style and added response-contract / locked Phase-1 rule references
 * Aligned database entity list more closely with the implementation blueprint
 * Added brief admin-auth, support-playbook, and content dual-audit references
+
+### A.4.17 | 2026-03-30
+* Added change-safe architecture rule so future feature additions, removals, and partial rollouts do not require fragile hardcoded rewrites
+* Added portability rule so deployment, backup, restore, and VPS migration remain routine operational tasks instead of redesign events
+* Expanded WebApp-first control to include safe runtime feature toggles, module enable/disable states, and migration/export readiness where appropriate
+* Added future-planning guidance for feature flags, module isolation, and migration-safe packaging
 ---
 
 # =========================================================
@@ -384,11 +390,46 @@ Prefer modular planning and updates using:
 - Future Additions Queue
 - Prompt Source where relevant
 
+Change-safe architecture rule:
+- new features should be attachable as isolated modules or subfeatures instead of requiring broad rewrites
+- removable or optional features should be disableable without breaking entitlement, payment, delivery, audit, or admin control flows
+- shared contracts should remain stable even when optional modules are added later
+- avoid hard dependency chains where one non-critical feature can break the whole system
+- prefer configuration-driven enable/disable behavior for optional features where safe
+
+Purpose:
+- reduce breakage during future changes
+- keep implementation extensible
+- support gradual rollout without destabilizing core operations
+
 ### B.10 Source Alignment Rule
 When a shared business rule changes, keep both the Master Instruction Source and Master Implementation Plan aligned.
 
 ### B.11 Legacy Migration and Target DB Rule
-When migrating from a live legacy MovieVirus VPS to a new VPS, treat the old VPS as a temporary entitlement source until cutover is validated. Prefer PostgreSQL as the target database. Reverse-engineer first, normalize second, migrate third. Preserve active subscriptions, payment history, and media delivery references where valid, but do not carry insecure legacy patterns such as plaintext token storage into the new system.
+When migrating from a live legacy MovieVirus VPS to a new VPS, treat the old VPS as a temporary entitlement source until cutover is validated.
+
+Prefer PostgreSQL as the target database.
+
+Reverse-engineer first, normalize second, migrate third.
+
+Preserve:
+- active subscriptions
+- payment history
+- media delivery references where valid
+
+Do not carry insecure legacy patterns such as plaintext token storage into the new system.
+
+Portability rules:
+- deployment must remain environment-driven, not server-name-driven
+- backups, restore steps, and environment configuration must be treated as first-class operational requirements
+- the system should be restartable on another VPS without redesigning core logic
+- storage paths, bot credentials, API base URLs, and runtime secrets must be externalized from application logic
+- migration/export/import readiness should be preserved during normal development, not added only during emergencies
+
+Purpose:
+- keep migration predictable
+- reduce owner dependency on one VPS
+- make relocation and disaster recovery operationally manageable
 
 ### B.12 VPS Naming and Environment Abstraction Rule
 - Terms such as "VPS-1" and "VPS-2" are human-friendly labels used by the system owner for operational clarity only.
@@ -417,6 +458,19 @@ Phase-1 admin scope note:
 - Phase 1 operates with a single admin account in practice.
 - The architecture may remain future-ready for multi-admin role expansion later.
 - Do not recommend full role-based access control complexity for Phase 1 unless explicitly requested.
+
+Additional change-safe management rule:
+- where safe, optional product behavior should be managed through WebApp-backed settings rather than hardcoded branching
+- examples may include:
+  - feature visibility
+  - reminder enable/disable state
+  - maintenance-mode messaging
+  - optional workflow steps
+  - rollout state for newly introduced non-critical features
+
+Boundaries:
+- WebApp-managed toggles must not be allowed to corrupt core entitlement correctness
+- critical quota deduction logic, token validation order, cryptographic behavior, and transaction safety must remain code-controlled
 
 Expanded WebApp-first rule:
 - As a default planning preference, any business setting, UX wording, payment-facing instruction, or adjustable operational value that may reasonably need future change should be manageable through WebApp-backed configuration or database records, not hardcoded in scripts.
@@ -1355,6 +1409,11 @@ Rules:
 - token_reminder_logs
 - plan_definitions
 - admin_audit_logs
+- feature_flags
+- module_registry
+- deployment_snapshots
+- backup_runs
+- restore_runs
 
 ### D.10.3 Legacy Migration Database Rule
 For legacy migration, prefer PostgreSQL as the target database and use normalized target entities instead of reusing the legacy SQLite schema directly.
@@ -1461,6 +1520,12 @@ Potential later enhancement for usage insights, revenue, and trends.
 
 ### E.6 Advanced Anti-Abuse Scoring
 Potential later enhancement for suspicious activity analysis.
+
+### E.7 Feature Flag and Safe Rollout System
+Potential later enhancement for enabling, disabling, or gradually rolling out optional features without code rewrites or unstable deployments.
+
+### E.8 Backup, Restore, and VPS Portability Framework
+Potential later enhancement for migration-ready packaging, environment-driven deployment, backup verification, and routine cross-VPS restoration.
 
 ---
 
