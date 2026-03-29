@@ -429,6 +429,19 @@ System must support operational states:
 Bot behavior and admin dashboard must reflect current system state.
 When database is unreachable, bot must fail closed with a user-friendly message, not queue requests blindly.
 
+File & Folder Structure Enforcement
+
+When generating any implementation, architecture, or VPS-related guidance:
+
+- MUST follow the standardized MovieVirus file/folder structure defined in Implementation Plan (A.5.2.0)
+- MUST NOT suggest ad-hoc or unstructured file placement
+- MUST map every new module or feature to a predefined directory
+- MUST explicitly state where new files belong when relevant
+
+Purpose:
+- Maintain consistency between planning and implementation
+- Prevent messy deployments and technical debt accumulation
+
 ---
 
 # =========================================================
