@@ -230,6 +230,20 @@
 * Standardized API responses around status_code, message_key, button_set_key, quota_effect, and log_type
 * Aligned commit endpoints with post-delivery-only quota deduction and idempotent request handling
 * Expanded admin and configuration endpoints to support dynamic content, linked-account reset, quota restore, and audit-safe recovery flows
+
+### A.3.28 | 2026-03-29
+- Resolved Phase-1 linked-account overflow contradiction in locked sections by standardizing deny-new-linking behavior
+- Removed duplicated duplicate-protection text
+- Removed duplicated content/localization screen section
+- Reclassified C.10.6 as simplified schema overview instead of authoritative field-level schema
+- Added folder-structure layering note to separate VPS/project-root layout from application-internal source layout
+
+### A.3.29 | 2026-03-29
+* Expanded WebApp-first control from content-only management into broader adjustable business and operational settings
+* Clarified that plans, pricing, payment instructions, configurable reminders, button behavior metadata, and normal runtime settings should be WebApp-managed where safe
+* Added explicit no-hardcode implementation preference for adjustable product settings
+* Preserved code/environment ownership for secrets, infrastructure credentials, schema, and critical enforcement/security logic
+
 ---
 
 # =========================================================
@@ -291,6 +305,14 @@ Core Rules:
 - Separate concerns clearly: bot logic, API, database, config, logs, scripts.
 - Environment-specific files must be isolated (dev / staging / production ready).
 - All paths must be predictable for automation and future scaling.
+
+Layering note:
+- This section defines the VPS/project-root deployment structure.
+- The application source code inside `/movievirus/app/` must follow the internal code structure defined later in this document.
+- Example interpretation:
+  - VPS/project root layout: `/movievirus/app/`, `/bot/`, `/api/`, `/services/`, `/database/`, `/scripts/`
+  - application-internal layout: source tree inside `/movievirus/app/`
+- These are not competing structures; they are different layers of the same project.
 
 ---
 
@@ -570,22 +592,19 @@ For legacy transition:
 - insecure legacy storage patterns must be removed during migration
 
 ### B.3.10 Locked Phase-1 Enforcement Decisions
-
 The following decisions are locked for Phase 1 and must not be treated as implementation-time assumptions:
 
 * daily cap scope = per token + Telegram account
 * duplicate protection window = 60 seconds
-* linked-account overflow behavior = auto-replace-oldest active account
-* replacement cooldown = 10 minutes per token
+* linked-account overflow behavior = deny new linking and direct user to contact admin
+* replacement cooldown = not applicable in Phase 1
 * standard plans = no time-based expiry
 * Telegram Stars = auto activation after verified successful payment
 * admin quota restore = allowed with dedicated audit logging
 
 Purpose:
-
 * convert planning logic into developer-safe implementation rules
 * reduce ambiguity in DB schema, API contract, and workflow handling
-
 ---
 
 # =========================================================
@@ -613,36 +632,39 @@ System should support admin-defined plans.
 Initial recommended plans:
 
 Starter:
-- price: 3,000 MMK
+- price: 3,000 MMK / 50 Stars
 - total quota: 30
 - daily cap: 3
 - max linked accounts: 1
 
 Basic:
-- price: 5,000 MMK
+- price: 5,000 MMK / 100 Stars
 - total quota: 50
 - daily cap: 5
 - max linked accounts: 2
 
 Plus:
-- price: 10,000 MMK
+- price: 10,000 MMK / 150 Stars
 - total quota: 100
 - daily cap: 10
 - max linked accounts: 3
 
 Pro:
-- price: 15,000 MMK
+- price: 15,000 MMK / 200 Stars
 - total quota: 150
 - daily cap: 15
 - max linked accounts: 4
 
 Premium:
-- price: 20,000 MMK
+- price: 20,000 MMK / 250 Stars
 - total quota: 200
 - daily cap: 20
 - max linked accounts: 5
 
 Notes:
+- price_stars is nullable
+- Stars pricing is optional per plan
+- Stars pricing may be adjusted independently of MMK pricing
 - These are default presets only
 - Admin can modify or create new plans dynamically
 - Standard plans do not expire by time
@@ -722,6 +744,12 @@ Rules:
   * daily cap reset boundary must use Asia/Yangon timezone
   * daily cap resets at 00:00 MMT (UTC+06:30)
   * failed validation cooldown = 5 failed attempts -> 5 minute cooldown
+
+### C.2.3 Fair Use Protection
+ * failed validation does not deduct quota
+ * file not found does not deduct quota
+ * delivery failure does not deduct quota
+ * duplicate ignored does not deduct quota
 
 ### C.2.4 Backend Core Decision Engine
 
@@ -1463,6 +1491,12 @@ Purpose:
 - reduce ban probability
 - maintain controlled access
 
+Phase-1 delivery handoff note:
+- The primary bot sends an inline button linking to the delivery bot.
+- Recommended format: `t.me/{delivery_bot_username}?start={delivery_token}`
+- The delivery bot receives the delivery token through `/start`, calls the backend delivery verification endpoint, and sends the file only if the token is valid and not already consumed.
+- The primary bot does not send the file directly.
+
 ### C.7.7 Duplicate Protection
 Definition:
 - duplicate request = same token + same telegram_user_id + same file within 30–60 seconds
@@ -1475,23 +1509,6 @@ Backend must:
 Bot must:
 - show user message explaining duplicate protection
 - NOT deduct quota
-
-Locked Phase-1 duplicate window:
-
-* duplicate protection window = 60 seconds
-
-Recommended duplicate guard key inputs:
-
-* token_id
-* telegram_user_id
-* file_id or normalized file identity
-* normalized request context
-
-Rules:
-
-* same logical request inside 60 seconds should not deduct quota twice
-* duplicate suppression must not replace hard request idempotency
-* idempotency and duplicate window must both be enforced server-side
 
 Locked Phase-1 duplicate window:
 
@@ -1749,16 +1766,37 @@ Rules:
 ### C.9.4 WebApp Management Authority
 The WebApp and backend admin system are the only authoritative places where user/member state is modified.
 
-This includes:
-- plan assignment
-- quota adjustment
-- token activation and revocation
-- linked-account management
-- payment review outcomes
-- recovery and reset actions
+WebApp-first adjustment rule:
+- Any setting that is expected to change during normal operation without requiring code logic redesign should be managed through WebApp-backed configuration or database records, not by editing scripts.
+- This includes business-facing, admin-facing, and user-facing adjustable settings where safe.
 
-Telegram should reflect backend state, not define it.
+Preferred WebApp-managed areas:
+- plans and pricing
+- quota and daily-cap values per plan
+- linked-account limits per plan
+- payment instructions and support text
+- message templates and localization content
+- menu labels and button labels
+- button ordering and active/inactive state
+- reminder thresholds and reminder enable/disable settings
+- retry/cooldown/duplicate-window settings where explicitly allowed by system settings
+- maintenance banners, notice text, and non-secret operational messaging
 
+Not WebApp-managed:
+- bot tokens
+- API secrets
+- database credentials
+- cryptographic/hashing implementation details
+- schema migrations
+- low-level transaction logic
+- core enforcement order
+- security-critical hard fail rules that should not be casually edited
+
+Purpose:
+- reduce operational dependence on code edits
+- make admin control practical for a non-programmer owner
+- preserve backend integrity and security boundaries
+  
 ### C.9.5 WebApp Admin System Scope
 The WebApp admin system must be the primary operational control panel for MovieVirus.
 
@@ -1845,11 +1883,22 @@ Plans screen must support:
   - duration_days
   - max_linked_accounts
   - sort_order
+  - plan_type
+
+Additional WebApp-first rule:
+- normal plan business adjustments must not require script edits
+- pricing and quota behavior exposed at the plan-definition layer should be editable from WebApp
+- plan presentation order and active/inactive state must be controllable from WebApp
 
 Rules:
 - plan edits must not silently rewrite historical token snapshots
 - changes apply to future token creation unless explicit migration action is taken
 - all plan mutations must create admin_action_logs
+
+Purpose:
+- keep plan administration manageable without code changes
+- reduce support friction for pricing and packaging updates
+- preserve historical auditability
 
 ### C.9.9 Tokens Management Screen
 Tokens screen must support:
@@ -1927,10 +1976,25 @@ Payments screen must support:
 - filter by method, status, plan, date
 - open linked token/member after approval
 
+Additional WebApp-manageable payment controls:
+- edit visible payment instructions
+- edit support/help text related to payment
+- activate/deactivate non-secret payment-facing content entries where appropriate
+- manage Telegram Stars price visibility where used through plan/config data
+- manage local payment guidance text without redeploy
+
 Rules:
 - payment review actions must write payment_review_logs
 - final approval/rejection must write admin_action_logs
 - approved payment should generate or reveal send-ready token result through backend workflow
+- payment-facing wording and instructions should not require script edits for normal updates
+- secrets, private credentials, and infrastructure-only payment integrations must remain outside normal WebApp-editable content
+
+Purpose:
+- let admin maintain payment instructions without code changes
+- reduce operational delay when payment guidance changes
+- preserve audit and security boundaries
+
 
 ### C.9.13 Requests and Usage Screen
 Requests / Usage screen must support:
@@ -1980,94 +2044,48 @@ Purpose:
 - move it into the unified admin portal instead of keeping a separate media-only control surface
 
 ### C.9.16 Content and Localization Management Screen
-
 Content / Localization screen must support:
-
-  * list content keys
-  * filter by category
-  * search by key
-  * edit Burmese content
-  * edit English content
-  * edit menu labels
-  * edit button labels
-  * edit notification/reminder text
-  * edit warning/denial text
-  * edit payment instruction text
-  * preview rendered content where practical
-  * activate/deactivate non-critical content entries where appropriate
-  * inspect content change history where available
+* list content keys
+* filter by category
+* search by key
+* edit Burmese content
+* edit English content
+* edit menu labels
+* edit button labels
+* edit notification/reminder text
+* edit warning/denial text
+* edit payment instruction text
+* preview rendered content where practical
+* activate/deactivate non-critical content entries where appropriate
+* inspect content change history where available
 
 Recommended categories:
-
-  * system_messages
-  * request_flow_messages
-  * payment_messages
-  * warning_messages
-  * reminder_messages
-  * notification_messages
-  * menu_labels
-  * button_labels
-  * help_and_support_messages
-
-Rules:
-
-  * content editing must not bypass stable key usage
-  * content publishing must not require app redeploy for normal text changes
-  * critical enforcement outcomes must remain mapped to backend status codes and message keys
-  * content changes should be auditable
-
-Purpose:
-
-  * centralize UX wording control
-  * reduce hardcoded text debt
-  * support Burmese-first operation with English toggle
-  * allow faster support and product iteration
-
-### C.9.17 Content and Localization Management Screen
-
-Content / Localization screen must support:
-
-  * list content keys
-  * filter by category
-  * search by key
-  * edit Burmese content
-  * edit English content
-  * edit menu labels
-  * edit button labels
-  * edit notification/reminder text
-  * edit warning/denial text
-  * edit payment instruction text
-  * preview rendered content where practical
-  * activate/deactivate non-critical content entries where appropriate
-  * inspect content change history where available
-
-Recommended categories:
-
-  * system_messages
-  * request_flow_messages
-  * payment_messages
-  * warning_messages
-  * reminder_messages
-  * notification_messages
-  * menu_labels
-  * button_labels
-  * help_and_support_messages
+* system_messages
+* request_flow_messages
+* payment_messages
+* warning_messages
+* reminder_messages
+* notification_messages
+* menu_labels
+* button_labels
+* help_and_support_messages
 
 Rules:
-
-  * content editing must not bypass stable key usage
-  * content publishing must not require app redeploy for normal text changes
-  * critical enforcement outcomes must remain mapped to backend status codes and message keys
-  * content changes should be auditable
+* content editing must not bypass stable key usage
+* content publishing must not require app redeploy for normal text changes
+* critical enforcement outcomes must remain mapped to backend status codes and message keys
+* content changes should be auditable
+* this screen is the primary place for adjustable bot-facing wording and UX text
+* visible wording should not be hardcoded in scripts when it can safely be resolved through content keys
 
 Purpose:
+* centralize UX wording control
+* reduce hardcoded text debt
+* support Burmese-first operation with English toggle
+* allow faster support and product iteration
+* make non-programmer administration practical
 
-  * centralize UX wording control
-  * reduce hardcoded text debt
-  * support Burmese-first operation with English toggle
-  * allow faster support and product iteration
-
-### C.9.18 WebApp UI Rules
+### C.9.17 WebApp UI Rules
 UI rules:
 - Burmese-first labels with English toggle
 - clear status badges for:
@@ -2139,248 +2157,23 @@ Before import:
 - enforce target-side foreign keys and indexes
 
 ### C.10.6 Final Phase-1 PostgreSQL Schema Blueprint
-
-This schema defines the complete Phase 1 database structure for MovieVirus.
-
----
-
-#### 1. members
-
-Stores user identity context.
-
-- id (PK)
-- telegram_user_id (unique)
-- username
-- first_name
-- last_name
-- language_preference (mm/en)
-- created_at
-- updated_at
-
----
-
-#### 2. tokens
-
-Represents subscription entitlement.
-
-- id (PK)
-- token_hash (unique)
-- plan_id (FK)
-- status (active, suspended, revoked, exhausted, pending)
-- total_quota
-- total_quota_remaining
-- daily_cap
-- max_linked_accounts
-- created_at
-- updated_at
-
----
-
-#### 3. plans
-
-- id (PK)
-- plan_key
-- name
-- price
-- total_quota
-- daily_cap
-- max_linked_accounts
-- is_active
-- created_at
-- updated_at
-
----
-
-#### 4. linked_accounts
-
-- id (PK)
-- token_id (FK)
-- member_id (FK)
-- linked_at
-- is_active
-
-Rules:
-- max count per token enforced in backend
-- no auto replacement
-
----
-
-#### 5. daily_usage
-
-- id (PK)
-- token_id (FK)
-- member_id (FK)
-- usage_date (Asia/Yangon)
-- request_count
-
-Constraint:
-- unique(token_id, member_id, usage_date)
-
----
-
-#### 6. request_logs
-
-Tracks every request lifecycle.
-
-- id (PK)
-- request_id (unique)
-- token_id (FK)
-- member_id (FK)
-- media_item_id (FK)
-- status (validated, processing, success, failed)
-- is_committed (boolean)
-- created_at
-- updated_at
-
-Rules:
-- idempotency based on request_id
-- commit-success updates is_committed=true
-
----
-
-#### 7. usage_logs
-
-Quota consumption logs.
-
-- id (PK)
-- token_id (FK)
-- member_id (FK)
-- request_id
-- media_item_id
-- quota_used (default 1)
-- created_at
-
----
-
-#### 8. media_items
-
-Unified media table.
-
-- id (PK)
-- title
-- original_title
-- media_type (movie, series)
-- description
-- release_year
-- country
-- created_at
-
----
-
-#### 9. episodes
-
-- id (PK)
-- media_item_id (FK)
-- season_number
-- episode_number
-- title
-- created_at
-
----
-
-#### 10. media_files
-
-- id (PK)
-- media_item_id (FK)
-- episode_id (nullable)
-- file_id (Telegram file_id)
-- quality
-- language
-- created_at
-
----
-
-#### 11. payments
-
-- id (PK)
-- member_id (FK)
-- method (stars, local)
-- amount
-- status (pending, approved, rejected)
-- screenshot_path
-- ocr_text
-- reviewed_by_admin_id
-- created_at
-- updated_at
-
----
-
-#### 12. admin_users
-
-- id (PK)
-- username
-- role
-- created_at
-
----
-
-#### 13. admin_action_logs
-
-- id (PK)
-- admin_id (FK)
-- action_type
-- target_type
-- target_id
-- before_value (JSON)
-- after_value (JSON)
-- reason
-- created_at
-
----
-
-#### 14. message_templates
-
-- id (PK)
-- key
-- lang (mm/en)
-- category
-- content
-- is_active
-- updated_at
-
----
-
-#### 15. button_templates
-
-- id (PK)
-- button_key
-- label_key
-- action_type
-- action_payload
-- is_active
-- sort_order
-
----
-
-#### 16. button_sets
-
-- id (PK)
-- set_key
-- description
-- is_active
-
----
-
-#### 17. button_set_items
-
-- id (PK)
-- set_id (FK)
-- button_key
-- sort_order
-
----
-
-#### 18. system_settings
-
-- key (PK)
-- value
-- description
-- updated_at
-
-Examples:
-- duplicate_window_seconds = 60
-- validation_cooldown_seconds = 300
-- daily_reset_timezone = Asia/Yangon
+This section is a simplified Phase-1 schema overview only.
+
+Authority rule:
+* when any field, identity model, foreign key, uniqueness rule, index, or table responsibility conflicts with later detailed schema definitions in C.10, the later detailed schema definitions are authoritative
+* this section must not be used as the sole implementation source for field-level database design
+
+Locked structural note preserved from this overview:
+* unified media model is used
+* movies -> media_items (media_type = 'movie')
+* series -> media_items (media_type = 'series')
+* episodes -> episodes table
+* file delivery references -> media_files
+
+Purpose:
+* provide a quick schema map for planning review
+* preserve the unified media model decision
+* defer all detailed implementation to the later detailed schema sections in C.10
 
 ### C.10.7 Delivery Integrity Rule
 Validate inherited Telegram delivery references before cutover. If delivery depends on source chat/message mapping, sample verification is mandatory before decommissioning the legacy VPS.
@@ -2561,6 +2354,12 @@ Indexes:
 #### Table: daily_usage_counters
 Purpose:
 - fast enforcement of per-token daily cap
+
+field-level changes:
+- add telegram_user_id (bigint, not null)
+- change uniqueness to unique(token_id, telegram_user_id, usage_date)
+- remove any older uniqueness rule of unique(token_id, usage_date)
+- remove any older member-based uniqueness rule for Phase 1 quota enforcement
 
 Fields:
 - id (uuid, pk)
@@ -3138,93 +2937,75 @@ Rules:
 
     
 ### C.10.17 Admin Configuration Data Model
-
 System must support dynamic configuration and dynamic content management via WebApp.
 
+Configuration ownership rule:
+- Prefer database-backed, WebApp-managed configuration for any normal operational or business value that may need adjustment without changing core code.
+- Do not hardcode adjustable business settings or normal UX content in scripts when a stable configuration model can own them safely.
+
+Minimum dynamic configuration scope:
 #### 1. message_templates
-
-Fields:
-
-  * id
-  * key
-  * lang (mm, en)
-  * category
-  * content
-  * is_active
-  * version
-  * updated_by
-  * updated_at
+Purpose:
+- store dynamic user-facing content
+Examples:
+- bot menus
+- prompts
+- warnings
+- reminders
+- payment instructions
+- support/help text
 
 #### 2. button_templates
-
-Fields:
-
-  * id
-  * button_key
-  * label_key
-  * action_type
-  * action_payload_template
-  * sort_order
-  * is_active
-  * updated_by
-  * updated_at
+Purpose:
+- store reusable button definitions
+Rules:
+- labels must resolve through content keys, not hardcoded visible text
+- active/inactive state should be manageable through WebApp where safe
 
 #### 3. button_sets
-
-Fields:
-
-  * id
-  * set_key
-  * description
-  * is_active
-  * updated_at
+Purpose:
+- group reusable buttons for backend-selected UI states
 
 #### 4. button_set_items
-
-Fields:
-
-  * id
-  * set_id
-  * button_key
-  * sort_order
-  * is_active
+Purpose:
+- control button ordering and set composition without script edits
 
 #### 5. content_change_logs
-
-Fields:
-
-  * id
-  * content_key
-  * lang
-  * old_content
-  * new_content
-  * changed_by_admin_id
-  * changed_at
-  * notes
+Purpose:
+- preserve content-specific audit history for wording and localization changes
 
 #### 6. plan_definitions
-
-Fields:
-
-  * id
-  * plan_key
-  * name
-  * price
-  * total_quota
-  * daily_cap
-  * max_linked_accounts
-  * is_active
-  * updated_by
-  * updated_at
+Purpose:
+- store admin-adjustable plan business values
+Minimum fields:
+- id
+- plan_key
+- name
+- price_mmk
+- price_stars
+- total_quota
+- daily_cap
+- max_linked_accounts
+- duration_days
+- plan_type
+- is_active
+- updated_by
+- updated_at
 
 #### 7. system_settings
-
-Fields:
-
-  * key
-  * value
-  * description
-  * updated_at
+Purpose:
+- store adjustable operational settings that are safe to manage without code edits
+Minimum examples:
+- duplicate_window_seconds
+- max_delivery_retry
+- validation_cooldown_seconds
+- daily_reset_timezone
+- quota_reminder_threshold_1
+- quota_reminder_threshold_2
+- maintenance_mode_enabled
+- maintenance_notice_content_key
+- telegram_stars_enabled
+- local_payment_review_required
 
 Examples:
 
@@ -3246,12 +3027,6 @@ Fields:
   * new_value
   * created_at
 
-Rules:
-
-  * all user-facing content used by bot flows should come from this configuration/content layer
-  * all wording changes should remain separate from enforcement logic
-  * content keys must be stable even if visible wording changes
-
 #### 9. members
 
 Used for user identity tracking.
@@ -3259,6 +3034,26 @@ Used for user identity tracking.
 #### 10. admin_users
 
 Used for admin identity tracking and audit reference.
+
+Rules:
+- system_settings must not be used to bypass locked core enforcement principles
+- settings must be validated server-side before activation
+- invalid or dangerous values must be rejected and logged
+
+Do not store as normal WebApp-editable config:
+- bot tokens
+- API secrets
+- DB credentials
+- hashing/crypto internals
+- schema migration definitions
+- atomic transaction rules
+- core validation order
+- security-critical constants that should remain code-controlled
+
+Purpose:
+- reduce hardcoded operational debt
+- support non-programmer administration
+- keep adjustable product behavior under WebApp control while preserving security boundaries
 ---
 
 # =========================================================
@@ -3641,7 +3436,7 @@ API style:
 - Telegram bot and WebApp are clients only
 
 Core rules:
-- bot must not enforce quota, expiry, linked-account, or payment state independently
+- bot must not enforce quota, daily cap, linked-account, or payment state independently
 - plaintext token may be submitted over HTTPS to backend for validation; backend hashes/compares internally
 - all critical enforcement results must come from backend/database state
 - successful delivery, quota deduction, and daily counter update must remain atomic
@@ -3658,33 +3453,38 @@ Error format:
 ```json
 {
   "success": false,
-  "code": "TOKEN_EXPIRED",
-  "message": "Token expired. Please renew or purchase a new plan.",
+  "code": "INVALID_TOKEN",
+  "message": "Invalid token.",
   "data": null,
   "meta": {
     "request_id": "req_01H..."
   }
 }
-```
+````
 
 ### C.14.2 Internal Client Authentication
+
 Internal clients:
-- primary Telegram bot
-- delivery bot
-- WebApp admin panel
+
+* primary Telegram bot
+* delivery bot
+* WebApp admin panel
 
 Required headers:
-- X-Service-Key: <server-side secret>
-- X-Client-Type: primary_bot | delivery_bot | webapp
-- X-Request-Id: <unique id>
+
+* X-Service-Key: <server-side secret>
+* X-Client-Type: primary_bot | delivery_bot | webapp
+* X-Request-Id: <unique id>
 
 Rules:
-- service keys are server-side only
-- user-facing Telegram clients must never see service keys
-- admin login/session is separate from internal service authentication
-- backend should reject requests with missing or invalid service key
+
+* service keys are server-side only
+* user-facing Telegram clients must never see service keys
+* admin login/session is separate from internal service authentication
+* backend should reject requests with missing or invalid service key
 
 Example:
+
 ```json
 {
   "headers": {
@@ -3700,17 +3500,20 @@ Example:
 GET /api/v1/search/files
 
 Purpose:
-- search movies/series before entitlement check
-- allow discovery first, then require token/purchase at request stage
+
+* search movies/series before entitlement check
+* allow discovery first, then require token/purchase at request stage
 
 Query params:
-- q = required string
-- year = optional integer
-- subtitle = optional string
-- page = optional integer
-- limit = optional integer
+
+* q = required string
+* year = optional integer
+* subtitle = optional string
+* page = optional integer
+* limit = optional integer
 
 Success example:
+
 ```json
 {
   "success": true,
@@ -3739,9 +3542,11 @@ Success example:
 GET /api/v1/search/details/{media_ref_id}
 
 Purpose:
-- fetch full details for one result before request
+
+* fetch full details for one result before request
 
 Success example:
+
 ```json
 {
   "success": true,
@@ -3764,12 +3569,14 @@ Success example:
 POST /api/v1/access/validate-and-link
 
 Purpose:
-- used when requesting Telegram account is not yet linked
-- validates plaintext token against backend
-- links Telegram account only if a free linked-account slot exists
-- denies linking when max linked accounts is already reached
+
+* used when requesting Telegram account is not yet linked
+* validates plaintext token against backend
+* links Telegram account only if a free linked-account slot exists
+* denies linking when max linked accounts is already reached
 
 Request:
+
 ```json
 {
   "token_plaintext": "MV-8F3K2L9XQ7P1A6N",
@@ -3786,7 +3593,8 @@ Request:
 }
 ```
 
-Success without replacement:
+Success example:
+
 ```json
 {
   "success": true,
@@ -3805,7 +3613,7 @@ Success without replacement:
         "total_quota_remaining": 47,
         "daily_cap": 5,
         "daily_remaining": 5,
-        "linked_account_action": "linked"
+        "linked_account_action": "auto_linked"
       }
     }
   },
@@ -3815,6 +3623,9 @@ Success without replacement:
 }
 ```
 
+Limit-reached example:
+
+```json
 {
   "success": false,
   "code": "LINKED_ACCOUNT_LIMIT_REACHED",
@@ -3827,7 +3638,7 @@ Success without replacement:
       "quota_effect": "none",
       "log_type": "validation_denied",
       "metadata": {
-        "linked_account_action": "denied",
+        "linked_account_action": "denied_link_limit",
         "contact_admin_required": true
       }
     }
@@ -3839,24 +3650,33 @@ Success without replacement:
 ```
 
 Common denial codes:
-- INVALID_TOKEN
-- TOKEN_EXPIRED
-- TOKEN_SUSPENDED
-- TOKEN_REVOKED
-- TOKEN_EXHAUSTED
-- TOKEN_DAILY_CAP_REACHED
-- TOKEN_COOLDOWN_BLOCKED
+
+* INVALID_TOKEN
+* TOKEN_SUSPENDED
+* TOKEN_REVOKED
+* TOKEN_EXHAUSTED
+* TOKEN_DAILY_CAP_REACHED
+* LINKED_ACCOUNT_LIMIT_REACHED
+* VALIDATION_COOLDOWN_BLOCKED
+
+Rules:
+
+* standard plans must not depend on normal expiry checks
+* no oldest-account replacement in Phase 1
+* denial must not consume quota
 
 ### C.14.5 Linked Account Validation API
 
 POST /api/v1/access/validate-linked
 
 Purpose:
-- used for already-linked Telegram accounts
-- should not require token input again unless link was reset or removed
-- validates entitlement status before request continues
+
+* used for already-linked Telegram accounts
+* should not require token input again unless link was reset or removed
+* validates entitlement status before request continues
 
 Request:
+
 ```json
 {
   "telegram_user_id": 123456789,
@@ -3866,6 +3686,7 @@ Request:
 ```
 
 Success example:
+
 ```json
 {
   "success": true,
@@ -3882,7 +3703,8 @@ Success example:
         "token_id": "tok_01J...",
         "plan_code": "BASIC",
         "total_quota_remaining": 47,
-        "daily_remaining": 5
+        "daily_remaining": 5,
+        "linked_account_action": "already_linked"
       }
     }
   },
@@ -3890,25 +3712,34 @@ Success example:
     "request_id": "req_01J..."
   }
 }
+```
 
 Common denial codes:
-- LINK_NOT_FOUND
-- TOKEN_EXPIRED
-- TOKEN_SUSPENDED
-- TOKEN_REVOKED
-- TOKEN_EXHAUSTED
-- TOKEN_DAILY_CAP_REACHED
+
+* LINK_NOT_FOUND
+* TOKEN_SUSPENDED
+* TOKEN_REVOKED
+* TOKEN_EXHAUSTED
+* TOKEN_DAILY_CAP_REACHED
+* VALIDATION_COOLDOWN_BLOCKED
+
+Rules:
+
+* standard plans should not emit normal expiry denial
+* endpoint must return backend decision object, not raw UI text
 
 ### C.14.6 Request Pre-Validation API
 
 POST /api/v1/requests/validate
 
 Purpose:
-- validates whether a file request may proceed before delivery token is issued
-- performs final entitlement checks before delivery starts
-- does NOT deduct quota
+
+* validates whether a file request may proceed before delivery token is issued
+* performs final entitlement checks before delivery starts
+* does NOT deduct quota
 
 Request:
+
 ```json
 {
   "telegram_user_id": 123456789,
@@ -3922,6 +3753,7 @@ Request:
 ```
 
 Success example:
+
 ```json
 {
   "success": true,
@@ -3952,6 +3784,7 @@ Success example:
 ```
 
 Duplicate example:
+
 ```json
 {
   "success": false,
@@ -3976,23 +3809,33 @@ Duplicate example:
 ```
 
 Common denial codes:
-- LINK_NOT_FOUND
-- TOKEN_EXPIRED
-- TOKEN_EXHAUSTED
-- TOKEN_DAILY_CAP_REACHED
-- FILE_NOT_FOUND
-- REQUEST_NOT_ALLOWED
+
+* LINK_NOT_FOUND
+* TOKEN_SUSPENDED
+* TOKEN_REVOKED
+* TOKEN_EXHAUSTED
+* TOKEN_DAILY_CAP_REACHED
+* FILE_NOT_FOUND
+* REQUEST_NOT_ALLOWED
+
+Rules:
+
+* validation and approval must not deduct quota
+* duplicate requests within the safe window must not deduct quota
+* duplicate protection must be enforced server-side
 
 ### C.14.7 Delivery Payload Verification API
 
 POST /api/v1/delivery/verify-payload
 
 Purpose:
-- called by delivery bot before sending file
-- validates DB-stored short-lived delivery token from primary bot
-- ensures delivery request belongs to the intended Telegram user
+
+* called by delivery bot before sending file
+* validates DB-stored short-lived delivery token from primary bot
+* ensures delivery request belongs to the intended Telegram user
 
 Request:
+
 ```json
 {
   "delivery_token": "dlp_xxxxx",
@@ -4001,6 +3844,7 @@ Request:
 ```
 
 Success example:
+
 ```json
 {
   "success": true,
@@ -4035,21 +3879,29 @@ Success example:
 ```
 
 Denial codes:
-- DELIVERY_PAYLOAD_INVALID
-- DELIVERY_PAYLOAD_EXPIRED
-- DELIVERY_PAYLOAD_ALREADY_USED
-- DELIVERY_PAYLOAD_USER_MISMATCH
+
+* DELIVERY_PAYLOAD_INVALID
+* DELIVERY_PAYLOAD_EXPIRED
+* DELIVERY_PAYLOAD_ALREADY_USED
+* DELIVERY_PAYLOAD_USER_MISMATCH
+
+Rules:
+
+* payload verification must not deduct quota
+* payload expiry and one-time-use checks must be backend-enforced
 
 ### C.14.8 Request Commit Success API
 
 POST /api/v1/requests/commit-success
 
 Purpose:
-- called only after delivery bot successfully sends the file
-- deducts quota and updates daily counter atomically
-- must be idempotent for the same request_id
+
+* called only after delivery bot successfully sends the file
+* deducts quota and updates daily counter atomically
+* must be idempotent for the same request_id
 
 Request:
+
 ```json
 {
   "request_id": "req_01J...",
@@ -4063,6 +3915,7 @@ Request:
 ```
 
 Success example:
+
 ```json
 {
   "success": true,
@@ -4088,7 +3941,10 @@ Success example:
   }
 }
 ```
+
 Already-committed idempotent example:
+
+```json
 {
   "success": true,
   "code": "REQUEST_ALREADY_COMMITTED",
@@ -4110,22 +3966,32 @@ Already-committed idempotent example:
     "request_id": "req_01J..."
   }
 }
+```
+
 Denial codes:
-- REQUEST_NOT_FOUND
-- REQUEST_ALREADY_COMMITTED
-- COMMIT_CONFLICT
+
+* REQUEST_NOT_FOUND
+* COMMIT_CONFLICT
+
+Rules:
+
+* only this endpoint may decrement quota
+* same request_id must never decrement quota more than once
+* validation must never decrement quota
 
 ### C.14.9 Request Commit Failure API
 
 POST /api/v1/requests/commit-failure
 
 Purpose:
-- called when delivery fails after up to 3 retries
-- records terminal delivery failure
-- must not deduct quota
-- should trigger admin notification workflow
+
+* called when delivery fails after up to 3 retries
+* records terminal delivery failure
+* must not deduct quota
+* should trigger admin notification workflow
 
 Request:
+
 ```json
 {
   "request_id": "req_01J...",
@@ -4139,6 +4005,7 @@ Request:
 ```
 
 Success example:
+
 ```json
 {
   "success": true,
@@ -4161,22 +4028,23 @@ Success example:
     "request_id": "req_01J..."
   }
 }
+```
 
 Idempotency rule:
 
 * if the same `request_id` / `request_key` is submitted again after failure was already recorded, backend must return the existing terminal result without creating another log row that could confuse reconciliation
-
-```
 
 ### C.14.10 Telegram Stars Payment API
 
 POST /api/v1/payments/telegram-stars/webhook
 
 Purpose:
-- receive confirmed Stars payment result
-- auto-approve and generate token immediately in Phase 1
+
+* receive confirmed Stars payment result
+* auto-approve and generate token immediately in Phase 1
 
 Request:
+
 ```json
 {
   "telegram_charge_id": "tg_01J...",
@@ -4188,6 +4056,7 @@ Request:
 ```
 
 Success example:
+
 ```json
 {
   "success": true,
@@ -4214,14 +4083,38 @@ Success example:
 }
 ```
 
+Rules:
+
+* standard plans should not include normal `expires_at` in response
+* plaintext token delivery should occur through the bot delivery flow, not be stored long-term
+
 ### C.14.11 Manual Payment API
 
 POST /api/v1/payments/manual/submit
 
 Purpose:
-- submit local manual payment proof for admin review
+
+* submit local manual payment proof for admin review
 
 Request:
+
+```json
+{
+  "plan_code": "PLUS",
+  "member": {
+    "display_name": "Example Buyer",
+    "phone_number": "09xxxxxxx"
+  },
+  "payment": {
+    "amount_mmk": 10000,
+    "payer_reference": "KBZ-123456",
+    "screenshot_file_id": "AgACAgUAAx..."
+  }
+}
+```
+
+Submit success example:
+
 ```json
 {
   "success": true,
@@ -4246,7 +4139,15 @@ Request:
 }
 ```
 
-Success example:
+POST /api/v1/admin/payments/{payment_transaction_id}/approve
+
+Purpose:
+
+* admin approval for local manual payment
+* generates token and returns/send-ready token details
+
+Approve success example:
+
 ```json
 {
   "success": true,
@@ -4274,49 +4175,53 @@ Success example:
 }
 ```
 
-POST /api/v1/admin/payments/{payment_transaction_id}/approve
-
-Purpose:
-- admin approval for local manual payment
-- generates token and returns/send-ready token details
-
-Success example:
-```json
-{
-  "success": true,
-  "code": "PAYMENT_APPROVED_TOKEN_CREATED",
-  "message": "Payment approved and token created.",
-  "data": {
-    "payment_transaction_id": "pay_01J...",
-    "token_id": "tok_01J...",
-    "token_masked": "MV-****-****-1A6N",
-    "plan_code": "PLUS",
-    "expires_at": "2026-06-25T00:00:00Z",
-    "delivery_action": "send_token_to_user"
-  },
-  "meta": null
-}
-```
-
 POST /api/v1/admin/payments/{payment_transaction_id}/reject
 
 Purpose:
-- reject local manual payment with reason
+
+* reject local manual payment with reason
 
 Request:
+
 ```json
 {
   "reason": "Screenshot does not match payment amount."
 }
 ```
 
+Reject success example:
+
+```json
+{
+  "success": true,
+  "code": "PAYMENT_REJECTED",
+  "message": "Payment rejected.",
+  "data": {
+    "decision": {
+      "status_code": "PAYMENT_REJECTED",
+      "message_key": "PAYMENT_REJECTED",
+      "button_set_key": "PLAN_PURCHASE",
+      "quota_effect": "none",
+      "log_type": "payment_rejected",
+      "metadata": {
+        "payment_transaction_id": "pay_01J..."
+      }
+    }
+  },
+  "meta": {
+    "request_id": "req_01J..."
+  }
+}
+```
+
 ### C.14.12 Admin Plan and Token APIs
 
-GET /api/v1/admin/plans  
-POST /api/v1/admin/plans  
+GET /api/v1/admin/plans
+POST /api/v1/admin/plans
 PATCH /api/v1/admin/plans/{plan_id}
 
 Plan response example:
+
 ```json
 {
   "success": true,
@@ -4339,24 +4244,18 @@ Plan response example:
   }
 }
 ```
-Quota adjustment example:
-
-{
-  "delta_quota": 5,
-  "reason_code": "manual_restore",
-  "notes": "Delivery failure recovery"
-}
-
 
 POST /api/v1/admin/tokens/create
 PATCH /api/v1/admin/tokens/{token_id}
+POST /api/v1/admin/tokens/{token_id}/suspend
+POST /api/v1/admin/tokens/{token_id}/reactivate
 POST /api/v1/admin/tokens/{token_id}/revoke
-POST /api/v1/admin/tokens/{token_id}/extend-expiry
 POST /api/v1/admin/tokens/{token_id}/adjust-quota
 POST /api/v1/admin/tokens/{token_id}/reset-linked-accounts
 GET /api/v1/admin/tokens/{token_id}/logs
 
 Quota adjustment example:
+
 ```json
 {
   "delta_quota": 5,
@@ -4365,50 +4264,59 @@ Quota adjustment example:
 }
 ```
 
+Rules:
+
+* `extend-expiry` should be reserved for special-plan-only admin cases if retained later
+* standard-plan administration should focus on quota, status, linked accounts, and dynamic content control
+* all mutation endpoints must create `admin_action_logs`
+
 ### C.14.13 Notifications and Status Message Contract
 
 User-facing status codes that bot/UI should map clearly:
 
-- TOKEN_REQUIRED
-- INVALID_TOKEN
-- TOKEN_VALIDATED_AND_LINKED
-- LINKED_ACCESS_OK
-- TOKEN_SUSPENDED
-- TOKEN_REVOKED
-- TOKEN_EXHAUSTED
-- TOKEN_DAILY_CAP_REACHED
-- LINKED_ACCOUNT_LIMIT_REACHED
-- VALIDATION_COOLDOWN_BLOCKED
-- DUPLICATE_REQUEST_IGNORED
-- REQUEST_APPROVED
-- REQUEST_COMMITTED
-- REQUEST_FAILURE_RECORDED
-- PAYMENT_SUBMITTED
-- PAYMENT_APPROVED_TOKEN_CREATED
-- PAYMENT_REJECTED
+* TOKEN_REQUIRED
+* INVALID_TOKEN
+* TOKEN_VALIDATED_AND_LINKED
+* LINKED_ACCESS_OK
+* TOKEN_SUSPENDED
+* TOKEN_REVOKED
+* TOKEN_EXHAUSTED
+* TOKEN_DAILY_CAP_REACHED
+* LINKED_ACCOUNT_LIMIT_REACHED
+* VALIDATION_COOLDOWN_BLOCKED
+* DUPLICATE_REQUEST_IGNORED
+* REQUEST_APPROVED
+* REQUEST_COMMITTED
+* REQUEST_FAILURE_RECORDED
+* PAYMENT_SUBMITTED
+* PAYMENT_APPROVED_TOKEN_CREATED
+* PAYMENT_REJECTED
 
 Optional special-plan-only status:
-- TOKEN_EXPIRED
+
+* TOKEN_EXPIRED
 
 Rules:
-- all denial reasons must be user-readable
-- send-failure events should notify requester and admin
-- final visible wording must come from message_key through the dynamic content system
-- final visible actions must come from button_set_key through the button system
-- normal standard plans should not emit expiry-based denial during normal operation
-- bots and WebApp clients must not invent alternate status meaning outside backend contract
+
+* all denial reasons must be user-readable
+* send-failure events should notify requester and admin
+* final visible wording must come from `message_key` through the dynamic content system
+* final visible actions must come from `button_set_key` through the button system
+* normal standard plans should not emit expiry-based denial during normal operation
+* bots and WebApp clients must not invent alternate status meaning outside backend contract
 
 ### C.14.14 API Idempotency and Logging Rules
 
 Rules:
-- all mutating endpoints should accept or generate a request correlation ID
-- request commit endpoints must be idempotent to prevent double deduction
-- duplicate request logic must be enforced server-side, not by bot memory
-- all admin mutation endpoints must create admin_action_logs
-- all verification failures should write token_verification_attempt_logs where relevant
-- all delivery failures should write token_usage_logs or equivalent request/usage failure records with zero quota deduction
-- all payment approval/rejection endpoints should create review/audit records
-- all linked-account reset and quota-adjustment operations must be auditable
+
+* all mutating endpoints should accept or generate a request correlation ID
+* request commit endpoints must be idempotent to prevent double deduction
+* duplicate request logic must be enforced server-side, not by bot memory
+* all admin mutation endpoints must create `admin_action_logs`
+* all verification failures should write `token_verification_attempt_logs` where relevant
+* all delivery failures should write `token_usage_logs` or equivalent request/usage failure records with zero quota deduction
+* all payment approval/rejection endpoints should create review/audit records
+* all linked-account reset and quota-adjustment operations must be auditable
 
 ### C.14.15 Core Logic Response Rules
 
@@ -4417,99 +4325,91 @@ All entitlement-related endpoints must return backend-decided state, not UI gues
 Validation, request, delivery, and payment endpoints should keep the standard API envelope while returning one strict decision object in `data.decision`.
 
 Required decision fields:
-- status_code
-- message_key
-- button_set_key
-- quota_effect
-- log_type
-- metadata (optional)
+
+* status_code
+* message_key
+* button_set_key
+* quota_effect
+* log_type
+* metadata (optional)
 
 Quota effect values:
-- none
-- decremented
+
+* none
+* decremented
 
 Rules:
-- standard plans should not emit expiry-based denial during normal operation
-- quota and sharing state must drive primary UX
-- message and button selection must be derived from backend response data
-- quota_effect must be explicit so clients never guess whether quota changed
-- log_type must be explicit so support and audit interpretation stays consistent
-- metadata may enrich rendering and logging, but must not replace stable contract fields
-- only commit-success may return quota_effect = decremented
-- commit-success must be idempotent
-- duplicate request logic must be enforced server-side, not by bot memory
+
+* standard plans should not emit expiry-based denial during normal operation
+* quota and sharing state must drive primary UX
+* message and button selection must be derived from backend response data
+* quota_effect must be explicit so clients never guess whether quota changed
+* log_type must be explicit so support/audit interpretation stays consistent
+* metadata may enrich rendering and logging, but must not replace stable contract fields
+* only commit-success may return `quota_effect = decremented`
+* commit-success must be idempotent
+* duplicate request logic must be enforced server-side, not by bot memory
 
 State authority rule:
-- only backend services may mutate token status, payment status, linked-account state, quota counters, approved-token linkage, and delivery-session state
-- bots and WebApp clients must request backend decisions and render backend-decided results only
-    
+
+* only backend services may mutate token status, payment status, linked-account state, quota counters, approved-token linkage, and delivery-session state
+* bots and WebApp clients must request backend decisions and render backend-decided results only
+
 Recommended response shape:
 
-    {
-      "success": true,
-      "code": "REQUEST_COMMITTED",
-      "message": "Backend decision returned.",
-      "data": {
-        "decision": {
-          "status_code": "REQUEST_COMMITTED",
-          "message_key": "DOWNLOAD_BUTTON",
-          "button_set_key": "DOWNLOAD_ACTION",
-          "quota_effect": "decremented",
-          "log_type": "delivery_success",
-          "metadata": {
-            "token_status": "active",
-            "total_quota_remaining": 49,
-            "daily_remaining": 4,
-            "duplicate_flag": false,
-            "linked_account_action": "none",
-            "reminder_trigger": null
-          }
-        }
-      },
-      "meta": {
-        "request_id": "req_01H..."
+```json
+{
+  "success": true,
+  "code": "REQUEST_COMMITTED",
+  "message": "Backend decision returned.",
+  "data": {
+    "decision": {
+      "status_code": "REQUEST_COMMITTED",
+      "message_key": "DOWNLOAD_BUTTON",
+      "button_set_key": "DOWNLOAD_ACTION",
+      "quota_effect": "decremented",
+      "log_type": "delivery_success",
+      "metadata": {
+        "token_status": "active",
+        "total_quota_remaining": 49,
+        "daily_remaining": 4,
+        "duplicate_flag": false,
+        "linked_account_action": "already_linked",
+        "reminder_trigger": null
       }
     }
+  },
+  "meta": {
+    "request_id": "req_01H..."
+  }
+}
+```
 
 Standard denial priorities:
-  1. invalid token / link not found
-  2. unusable token status
-  3. total quota exhausted
-  4. daily cap reached
-  5. linked-account limit reached
-  6. validation cooldown blocked
-  7. duplicate ignored
-  8. delivery failure
 
-Rules:
-
-  * standard plans should not emit expiry-based denial for normal operation
-  * quota and sharing state must drive primary UX
-  * message and button selection must be derived from backend response data
-  * quota_effect must be explicit so clients never guess whether quota changed
-  * log_type must be explicit so support/audit interpretation stays consistent
-  * metadata may enrich rendering and logging, but must not replace stable contract fields
-  * commit-success must be idempotent
-  * duplicate request logic must be enforced server-side, not by bot memory
-
-State authority rule:
-  * only backend services may mutate token status, payment status, linked-account state, quota counters, approved-token linkage, and delivery-session state
-  * bots and WebApp clients must request backend decisions and render backend-decided results only
+1. invalid token / link not found
+2. unusable token status
+3. total quota exhausted
+4. daily cap reached
+5. linked-account limit reached
+6. validation cooldown blocked
+7. duplicate ignored
+8. delivery failure
 
 ### C.14.16 Button Set Definitions
+
 Button sets must be predefined and reusable.
-Each button_set_key maps to a list of button types.
+Each `button_set_key` maps to a list of button types.
 
 Locked response requirements for Phase 1:
 
-* daily_remaining must be computed for the current token + Telegram account pair
-* linked_account_action must explicitly distinguish:
+* `daily_remaining` must be computed for the current token + Telegram account pair
+* `linked_account_action` must explicitly distinguish:
+
   * already_linked
   * auto_linked
-  * auto_replaced_oldest
-  * denied_replacement_cooldown
   * denied_link_limit
-* duplicate_flag must reflect the 60-second duplicate window result
+* `duplicate_flag` must reflect the 60-second duplicate window result
 * standard-plan responses must not imply normal expiry countdown
 * admin-restored quota must appear as normal remaining quota in entitlement responses, while remaining separately auditable in admin/support views
 
@@ -4518,73 +4418,88 @@ Locked response requirements for Phase 1:
 #### Button Set List (Phase 1)
 
 MAIN_MENU:
-- SEARCH_MOVIE
-- SEARCH_SERIES
-- MY_PLAN
-- BUY_PLAN
-- HELP
+
+* SEARCH_MOVIE
+* SEARCH_SERIES
+* MY_PLAN
+* BUY_PLAN
+* HELP
 
 PLAN_LIST:
-- PLAN_STARTER
-- PLAN_BASIC
-- PLAN_PLUS
-- PLAN_PRO
-- PLAN_PREMIUM
+
+* PLAN_STARTER
+* PLAN_BASIC
+* PLAN_PLUS
+* PLAN_PRO
+* PLAN_PREMIUM
 
 PLAN_ACTIONS:
-- BUY_PLAN
-- UPGRADE_PLAN
-- VIEW_PLAN
+
+* BUY_PLAN
+* UPGRADE_PLAN
+* VIEW_PLAN
 
 PLAN_PURCHASE:
-- PLAN_LIST
-- BACK
+
+* PLAN_LIST
+* BACK
 
 TOKEN_ENTRY:
-- ENTER_TOKEN
-- BUY_PLAN
+
+* ENTER_TOKEN
+* BUY_PLAN
 
 TOKEN_RETRY:
-- ENTER_TOKEN
-- BACK
+
+* ENTER_TOKEN
+* BACK
 
 REQUEST_CONFIRM:
-- CONFIRM_REQUEST
-- CANCEL
+
+* CONFIRM_REQUEST
+* CANCEL
 
 DOWNLOAD_ACTION:
-- DOWNLOAD_FILE
-- BACK
+
+* DOWNLOAD_FILE
+* BACK
 
 RETRY_ACTION:
-- RETRY
-- CONTACT_SUPPORT
+
+* RETRY
+* CONTACT_SUPPORT
 
 BACK:
-- MAIN_MENU
+
+* MAIN_MENU
 
 NONE:
-- (no buttons)
+
+* (no buttons)
 
 ---
 
 #### Rules
-- button sets must be static keys, not dynamic arrays in logic
-- backend selects button_set_key only
-- bot resolves button_set_key into actual buttons
+
+* button sets must be static keys, not dynamic arrays in logic
+* backend selects `button_set_key` only
+* bot resolves `button_set_key` into actual buttons
 
 Purpose:
-- reduce backend complexity
-- standardize UX patterns
-- enable WebApp-level customization later
+
+* reduce backend complexity
+* standardize UX patterns
+* enable WebApp-level customization later
 
 ### C.14.17 Admin Configuration Runtime Resolution
+
 Backend must resolve configuration dynamically.
 
 ---
 
 #### Message Resolution
-IF message exists in DB (message_templates):
+
+IF message exists in DB (`message_templates`):
 → use DB version
 ELSE:
 → fallback to default JSON
@@ -4592,43 +4507,60 @@ ELSE:
 ---
 
 #### Button Resolution
-1. backend returns button_set_key
-2. system loads button_sets + button_set_items
+
+1. backend returns `button_set_key`
+2. system loads `button_sets` + `button_set_items`
 3. system resolves:
-   - button label (via message_templates)
-   - action payload
+
+   * button label (via `message_templates`)
+   * action payload
 4. bot renders final buttons
 
 ---
 
 #### Plan Resolution
-- backend must load plan_definitions dynamically
-- no hardcoded plan logic allowed
-- pricing, quota, sharing must come from DB
+
+* backend must load `plan_definitions` dynamically
+* no hardcoded plan logic allowed
+* pricing, quota, sharing must come from DB
 
 ---
 
 #### System Settings Resolution
-- system_settings must control:
-   - duplicate protection window
-   - retry limits
-   - replacement cooldown
-   - payment pending expiry
-   - optional features
-- backend must read settings at runtime or cache safely
+
+* `system_settings` must control:
+
+  * duplicate protection window
+  * retry limits
+  * validation cooldown
+  * payment pending expiry
+  * optional features
+* backend must read settings at runtime or cache safely
 
 ---
 
 #### Rules
-- DB overrides always take priority over code defaults
-- missing config must fallback safely
-- invalid config must not crash system (fallback required)
+
+* DB overrides always take priority over code defaults
+* missing config must fallback safely
+* invalid config must not crash system (fallback required)
 
 Purpose:
-- allow full control without redeploy
-- support rapid iteration and fixes
 
----
+* allow full control without redeploy
+* support rapid iteration and fixes
+
+```
+
+## Summary
+
+Affected documents: **B only**  
+Affected sections: the full `C.14 Module 14: Backend API Contracts` block  
+Changelog/version status: no new changelog entry is required just to correct this block unless you want to record this as a cleanup pass  
+Clarification status: **resolved**
+::contentReference[oaicite:1]{index=1}
+```
+
 
 # =========================================================
 # C.15 ADMIN SYSTEM (WEBAPP CONTROL LAYER)
@@ -4644,50 +4576,119 @@ Future:
 - multi-admin roles
 - permission levels
 
+Rules:
+- every admin action must be attributable to one admin identity
+- admin identity must map to `admin_users`
+- no anonymous mutation of plans, tokens, payments, content, or settings
+
 ### C.15.2 Editable Areas
 Admin must be able to control:
+
 1. Messages
    - edit Burmese and English content
    - enable/disable messages
+   - preview before publish
+
 2. Buttons
    - change labels
    - reorder buttons
    - enable/disable buttons
+
 3. Plans
-   - create/edit/delete plans
+   - create/edit plans
    - adjust price, quota, daily cap, sharing
+   - activate/deactivate plan
+
 4. System Settings
    - adjust duplicate window
    - adjust retry limits
+   - adjust validation cooldown
    - toggle optional features
+
 5. Tokens (Support Actions)
    - suspend token
+   - reactivate token
+   - revoke token
    - restore quota
    - reset linked accounts
 
+Rules:
+- visible text must not be hardcoded in bot logic
+- all runtime content changes must resolve through DB-backed configuration
+- standard plans should not rely on normal expiry controls
+- special-plan-only expiry controls may exist later if explicitly enabled
+
 ### C.15.3 UI Requirements
 WebApp must provide:
+- dashboard overview
 - message editor (with preview)
 - plan editor (form-based)
 - button configuration UI
 - system settings panel
+- token support action panel
+- payment review queue
 - audit log viewer
+- member/user lookup
+- linked-account inspection view
+- request history view
+- media library management screen
+
+Example content update payload:
+```json
+{
+  "message_key": "PAYMENT_REJECTED",
+  "lang": "mm",
+  "content": "ငွေပေးချေမှုကို အတည်ပြု၍ မရပါ။ ထပ်မံစစ်ဆေးပြီး ပြန်တင်ပါ။",
+  "is_active": true
+}
+````
+
+Example plan update payload:
+
+```json
+{
+  "plan_key": "PLUS",
+  "name": "Plus",
+  "price_mmk": 10000,
+  "price_stars": 1000,
+  "total_quota": 100,
+  "daily_cap": 10,
+  "max_linked_accounts": 3,
+  "plan_type": "standard",
+  "duration_days": null,
+  "is_active": true
+}
+```
 
 ### C.15.4 Safety Rules
-- all changes must be logged in admin_audit_logs
-- critical changes must not overwrite silently
-- optional: confirmation step for high-impact changes
+
+* all changes must be logged in `admin_action_logs`
+* critical changes must not overwrite silently
+* confirmation step is recommended for high-impact changes
+* before/after values must be stored for token state, quota restore, plan edits, linked-account reset, payment approval/rejection, and configuration edits
+* DB-backed configuration must fail safely when invalid
+
+Rules:
+
+* no silent correction of quota, token state, or linked accounts
+* no admin action should bypass audit logging
+* admin-visible labels may change, but backend meaning must remain tied to stable keys and statuses
 
 ### C.15.5 Runtime Impact
-- changes should apply immediately where safe
-- no system restart required
-- cached values must be refreshed periodically or invalidated
+
+* changes should apply immediately where safe
+* no system restart required
+* cached values must be refreshed periodically or invalidated
+* content, button, and settings reads may use safe short-lived cache
+* quota, token status, payments, linked accounts, and request state must always use authoritative backend/DB state
 
 Purpose:
-- empower admin to operate system without developer
-- reduce downtime and dependency on code changes
+
+* empower admin to operate system without developer
+* reduce downtime and dependency on code changes
 
 ### C.15.6 Admin Operation Playbook (Phase 1)
+
 This defines how the system is operated daily and how common user issues are handled.
 
 ---
@@ -4695,39 +4696,89 @@ This defines how the system is operated daily and how common user issues are han
 #### C.15.6.1 Daily Operations
 
 ##### C.15.6.1.1 Payment Review
+
 Flow:
+
 1. user submits payment
-2. system marks transaction as pending/review
+2. system marks transaction as `pending_review`
 3. admin checks:
-   - screenshot
-   - OCR result (if available)
+
+   * screenshot
+   * OCR result (if available)
+   * amount
+   * payer reference
 4. admin action:
-   - approve → activate plan
-   - reject → notify user
+
+   * approve → create token / activate entitlement
+   * reject → store rejection reason
+5. system records audit trail
 
 Rules:
-- always log approval source (admin / OCR)
-- never activate plan without recorded transaction
+
+* always log approval source (`admin_manual`, `stars_auto`, or equivalent internal source classification)
+* never activate plan without recorded transaction
+* OCR must remain advisory only in Phase 1
+
+Approve example:
+
+```json
+{
+  "payment_transaction_id": "pay_01J...",
+  "action": "approve",
+  "reason": "Manual verification matched screenshot and amount."
+}
+```
+
+Reject example:
+
+```json
+{
+  "payment_transaction_id": "pay_01J...",
+  "action": "reject",
+  "reason": "Screenshot does not match expected amount."
+}
+```
 
 ##### C.15.6.1.2 User Support Handling
+
 Admin must handle user issues through structured steps.
 
 ---
 
 Case A: "Quota wrong"
 Steps:
+
 1. check usage logs
 2. verify:
-   - successful deliveries
-   - duplicate protection
+
+   * successful deliveries
+   * duplicate protection result
+   * commit-success record
 3. IF system error confirmed:
    → restore quota manually
-   → log action (admin_audit_logs)
+   → log action in `admin_action_logs`
+
+Rules:
+
+* quota restore must not overwrite request history
+* quota restore must remain separately auditable from normal usage
+
+Quota restore example:
+
+```json
+{
+  "token_id": "tok_01J...",
+  "delta_quota": 1,
+  "reason_code": "manual_restore",
+  "notes": "Duplicate charge correction after delivery failure review."
+}
+```
 
 ---
 
 Case B: "File not received"
 Steps:
+
 1. check request state
 2. IF delivery failed:
    → confirm no quota deducted
@@ -4736,39 +4787,57 @@ Steps:
    → restore quota
    → log correction
 
+Rules:
+
+* commit-failure must leave `quota_effect = none`
+* repeated failure review should inspect request log, delivery log, and commit history together
+
 ---
 
 Case C: "Token not working"
 Steps:
+
 1. verify token exists
 2. check token state:
-   - suspended
-   - revoked
-   - exhausted
+
+   * suspended
+   * revoked
+   * exhausted
 3. IF linked account issue:
-   → reset linked accounts OR explain replacement behavior
+   → reset linked accounts OR explain linked-account limit reached behavior
+4. IF validation cooldown active:
+   → explain cooldown and expected retry timing
+
+Rules:
+
+* Phase 1 behavior is deny new linking when slots are full
+* no auto-replace-oldest explanation should appear in support guidance
 
 ---
 
 Case D: "Lost device"
 Steps:
-1. verify ownership (basic confirmation)
+
+1. verify ownership (basic support confirmation)
 2. reset linked accounts
-3. allow re-linking
+3. allow re-linking from new Telegram account
 
 Rules:
-- linked account reset must NOT deduct quota
-- must log reset action
+
+* linked account reset must NOT deduct quota
+* must log reset action
+* reset should preserve request and usage history
 
 ##### C.15.6.1.3 Plan & Payment Issues
 
 Case E: "Payment made but not activated"
 Steps:
+
 1. find transaction
-2. verify screenshot / OCR
+2. verify screenshot / OCR / payment details
 3. IF valid:
    → approve manually
-   → activate plan
+   → create token / activate plan
 4. IF invalid:
    → reject with reason
 
@@ -4776,142 +4845,273 @@ Steps:
 
 Case F: "Upgrade request"
 Steps:
+
 1. confirm new payment
 2. activate new plan immediately
 3. old plan handling:
-   - either override
-   - or merge quota (based on system policy)
+
+   * carry forward remaining quota
+   * apply new plan quota
+   * log plan change and delta
 
 Rule:
-- upgrade must apply immediately
+
+* upgrade must apply immediately
+* downgrade is not an in-place standard-plan operation
+
+##### C.15.6.1.4 Content & Settings Operations
+
+Case G: "Need to change wording"
+Steps:
+
+1. find `message_key`
+2. edit Burmese and/or English content
+3. preview
+4. publish
+5. verify bot renders updated content
+
+Case H: "Need to change button order"
+Steps:
+
+1. load `button_set_key`
+2. reorder button set items
+3. save
+4. verify expected rendering in bot
+
+Case I: "Need to change duplicate window or cooldown"
+Steps:
+
+1. edit `system_settings`
+2. save
+3. verify runtime load / cache refresh
+4. audit change
+
+Rules:
+
+* system meaning must remain stable even if wording changes
+* invalid settings must not break runtime behavior
 
 ---
 
 #### C.15.6.2 System Monitoring
+
 Admin must periodically monitor:
-- delivery failures
-- repeated retry failures
-- unusual token usage patterns
-- payment anomalies
+
+* delivery failures
+* repeated retry failures
+* unusual token usage patterns
+* payment anomalies
+* repeated validation failures
+* linked-account limit denials
+* configuration errors or missing content keys
 
 ##### C.15.6.2.1 Delivery Monitoring
+
 IF repeated delivery failures:
 → investigate:
-   - bot issues
-   - Telegram limits
-   - file availability
+
+* bot issues
+* Telegram limits
+* file availability
+* expired or invalid delivery token flow
+* commit-success / commit-failure inconsistencies
 
 ##### C.15.6.2.2 Abuse Monitoring
+
 Signs:
-- too many linked account changes
-- rapid requests across multiple users
+
+* too many linked account changes
+* rapid requests across multiple users
+* repeated invalid token attempts
+* unusual delivery-failure patterns
+* suspicious payment submissions
 
 Actions:
-- suspend token
-- review manually
+
+* suspend token
+* review manually
+* log support/admin action
+* restore quota only when justified
 
 ---
 
 #### C.15.6.3 Admin Actions (Allowed Operations)
+
 Admin can:
-- restore quota
-- suspend token
-- revoke token
-- reset linked accounts
-- approve/reject payments
-- modify plans
-- adjust system settings
+
+* restore quota
+* suspend token
+* reactivate token
+* revoke token
+* reset linked accounts
+* approve/reject payments
+* modify plans
+* adjust system settings
+* edit dynamic content
+* edit button configuration
+* inspect logs and histories
 
 Rules:
-- all actions must be logged
-- no silent changes allowed
+
+* all actions must be logged
+* no silent changes allowed
+* all actions should use auditable backend endpoints
+
+Example admin audit row shape:
+
+```json
+{
+  "admin_id": "adm_01J...",
+  "action_type": "quota_restore",
+  "target_type": "token",
+  "target_id": "tok_01J...",
+  "before_value": {
+    "total_quota_remaining": 46
+  },
+  "after_value": {
+    "total_quota_remaining": 47
+  },
+  "reason": "Delivery failure recovery",
+  "created_at": "2026-03-29T12:15:00Z"
+}
+```
+WebApp-first operations note:
+- routine business and UX adjustments should be performed through WebApp-backed configuration and content records, not through script edits
+- examples include plan updates, pricing updates, reminder settings, payment instruction changes, button visibility/order, and maintenance messaging
+- security secrets, infrastructure credentials, and code-level enforcement logic remain outside normal WebApp administration
 
 ---
 
 #### C.15.6.4 Communication Rules
+
 All user-facing responses must:
-- clearly explain reason for denial
-- provide next action (buttons or guidance)
-- avoid technical language
+
+* clearly explain reason for denial
+* provide next action (buttons or guidance)
+* avoid technical language
+* render from backend `message_key` + `button_set_key`
 
 Examples:
-- quota exhausted → suggest plan purchase
-- token invalid → guide to re-enter or purchase
+
+* quota exhausted → suggest plan purchase
+* token invalid → guide to re-enter or purchase
+* linked-account limit reached → guide user to contact admin
+* validation cooldown → explain wait period simply
 
 Purpose:
-- reduce confusion
-- reduce support load
+
+* reduce confusion
+* reduce support load
 
 ---
 
 #### C.15.6.5 Emergency Handling
 
-Case G: System failure
+Case J: System failure
 Actions:
-1. pause affected features (if possible)
-2. notify users (optional broadcast)
-3. investigate logs
-4. restore service
+
+1. set system health to degraded or maintenance
+2. pause affected features if needed
+3. show safe user-facing message
+4. investigate logs
+5. restore service
 
 ---
 
-Case H: Data inconsistency
+Case K: Data inconsistency
 Actions:
-1. identify affected users
-2. correct data via admin tools
-3. log all corrections
+
+1. identify affected users/tokens
+2. inspect request, usage, payment, and audit logs
+3. correct data via admin tools
+4. log all corrections
 
 ---
 
 Rules:
-- never silently ignore issues
-- always maintain audit trace
+
+* never silently ignore issues
+* always maintain audit trace
+* quota corrections and linked-account resets must remain visible in admin audit history
 
 ---
 
 #### C.15.6.6 Audit & Traceability Rules
+
 All admin actions must:
-- be recorded in admin_audit_logs
-- include:
-   - who performed action
-   - what changed
-   - before/after values
-   - timestamp
+
+* be recorded in `admin_action_logs`
+* include:
+
+  * who performed action
+  * what changed
+  * before/after values
+  * reason
+  * timestamp
 
 Purpose:
-- accountability
-- debugging support
-- dispute resolution
+
+* accountability
+* debugging support
+* dispute resolution
 
 ### C.15.7 System Health State
+
 System must support:
-- normal
-- degraded
-- maintenance
+
+* normal
+* degraded
+* maintenance
 
 Usage:
-- bot changes behavior based on state
-- admin dashboard displays status
+
+* bot changes behavior based on state
+* admin dashboard displays status
+* backend should fail closed for entitlement-sensitive operations when required state cannot be trusted
 
 Purpose:
-- graceful degradation
-- clearer user messaging
+
+* graceful degradation
+* clearer user messaging
 
 ### C.15.8 Database Access Strategy
+
 Use:
-- Knex for queries/migrations
-- raw SQL for critical transactions
+
+* Knex for queries/migrations
+* raw SQL for critical transactions
 
 Avoid:
-- relying solely on ORM abstractions
+
+* relying solely on ORM abstractions for atomic quota deduction, commit handling, or concurrency-sensitive operations
+
+Rules:
+
+* request commit-success should be a DB transaction
+* quota decrement + usage log + daily counter update must succeed or roll back together
+* audit-critical writes should not be fire-and-forget
 
 ### C.15.9 Admin Auth Security
+
 Add:
-- session timeout (30–60 min)
-- login attempt limit
-- IP logging
+
+* session timeout (30–60 min)
+* login attempt limit
+* IP logging
+* CSRF protection if session/cookie-based
+* secure password hashing
+* audit log on login/logout and failed admin login attempts
+
+Rules:
+
+* admin session must be separate from service-key auth
+* service keys are for internal clients only
+* single-admin Phase 1 still requires auditable identity
+
+````
 
 ---
+
 
 # =========================================================
 # C.16 BACKEND IMPLEMENTATION BLUEPRINT (NODE.JS)
@@ -4923,161 +5123,425 @@ Add:
 - Runtime: Node.js (LTS)
 - Framework: Express.js (or Fastify optional)
 - Database: PostgreSQL
-- ORM/Query: Knex + raw SQL for critical paths
+- Query Layer: Knex + raw SQL for critical paths
 - Auth: Service key (internal), session (admin)
 - Deployment: VPS (legacy → new migration ready)
 
+Rules:
+- backend must remain the only authority for quota, token state, linked accounts, and payment state
+- standard-plan enforcement must not depend on normal expiry logic
+- dynamic content, button sets, plans, and settings must be DB-backed and runtime-resolved
+
 ### C.16.2 Project Structure
 Recommended structure:
-```
-/src
-  /config
-  /db
-  /modules
+```text
+/movievirus/
+  /app
+  /api
+    /routes
+    /controllers
+    /schemas
+  /services
     /auth
     /token
+    /quota
+    /linked_accounts
     /request
     /delivery
     /payment
     /admin
     /search
-  /middleware
-  /utils
-  /jobs
-  /routes
-  app.js
-```
+    /content
+    /config_runtime
+  /database
+    /migrations
+    /seeds
+    /queries
+  /bot
+    /handlers
+    /flows
+    /middlewares
+    /keyboards
+    /messages
+    /routers
+  /config
+  /scripts
+  /logs
+  /storage
+  /backups
+  /tests
+  main_entry/
+````
+
+Rules:
+
+* no business logic inside bot handlers
+* controllers should remain thin
+* services own business logic
+* critical transactional SQL may bypass helper abstraction where clarity and atomicity matter more
 
 ### C.16.3 Module Responsibilities
-auth:
-- service key validation
-- request authentication
 
-token:
-- token validation
-- linking logic
-- expiry checks
+#### auth
 
-request:
-- request validation
-- duplicate protection
-- commit success/failure
+* service key validation
+* request authentication
+* admin session auth
+* request identity / correlation handling
 
-delivery:
-- payload storage/verification
-- delivery validation
+#### token
 
-payment:
-- telegram stars webhook
-- manual payment handling
+* token validation
+* linking logic
+* token state handling
+* masked token handling
+* secure hash comparison
 
-admin:
-- plan management
-- token management
-- logs
+#### quota
 
-search:
-- file search + metadata
+* total quota checks
+* daily cap checks
+* atomic quota decrement
+* manual quota restore support
+
+#### linked_accounts
+
+* linked-account lookup
+* auto-link when allowed
+* deny link when max linked accounts reached
+* reset specific/all linked accounts via admin
+
+#### request
+
+* request validation
+* duplicate protection
+* request lifecycle state handling
+* commit success/failure handling
+
+#### delivery
+
+* delivery token creation
+* delivery payload verification
+* one-time use enforcement
+* delivery window / delete-after metadata
+
+#### payment
+
+* Telegram Stars webhook
+* manual payment handling
+* OCR-assisted review support
+* payment approval/rejection flows
+* token creation after approved payment
+
+#### admin
+
+* plan management
+* token management
+* quota restore
+* linked-account reset
+* audit log access
+* system settings updates
+
+#### search
+
+* file search + metadata
+* details lookup
+* unified media search result composition
+
+#### content
+
+* dynamic message resolution
+* button set resolution
+* fallback behavior
+* content preview support
+
+#### config_runtime
+
+* system settings resolution
+* safe caching / invalidation
+* duplicate window / cooldown / retry limit loading
 
 ### C.16.4 Controller → Service Flow
+
 Example:
 POST /api/v1/requests/validate
 
 Flow:
-- request.controller
-- request.service.validateRequest()
-- token.service.checkLinkedUser()
-- quota.service.checkQuota()
-- duplicate.service.checkDuplicate()
-- return response
+
+* `requests.controller.validateRequest`
+* `auth.service.assertInternalClient`
+* `linked_accounts.service.resolveLinkedUser`
+* `token.service.assertUsableToken`
+* `quota.service.assertQuotaAvailable`
+* `quota.service.assertDailyCapAvailable`
+* `request.service.checkDuplicateWindow`
+* `delivery.service.issueDeliveryToken`
+* `response.service.buildDecision`
+
+Example decision response:
+
+```json
+{
+  "success": true,
+  "code": "REQUEST_APPROVED",
+  "message": "Request approved.",
+  "data": {
+    "decision": {
+      "status_code": "REQUEST_APPROVED",
+      "message_key": "REQUEST_CONFIRM",
+      "button_set_key": "REQUEST_CONFIRM",
+      "quota_effect": "none",
+      "log_type": "request_validated",
+      "metadata": {
+        "request_id": "req_01J...",
+        "duplicate_window_seconds": 60,
+        "daily_remaining": 5
+      }
+    }
+  },
+  "meta": {
+    "request_id": "req_01J..."
+  }
+}
+```
 
 ### C.16.5 Critical Transaction Logic
-Commit success must be atomic:
+
+Commit success must be atomic.
 
 Within single DB transaction:
-1. insert usage log
-2. decrement token quota
-3. update daily_usage_counters
+
+1. confirm request exists and is not already committed
+2. insert usage log
+3. decrement token quota
+4. update daily usage counter
+5. mark request as committed
+6. return updated quota state
 
 If any step fails:
-- rollback entire transaction
+
+* rollback entire transaction
+
+Pseudo-SQL shape:
+
+```sql
+BEGIN;
+
+SELECT id, token_id, member_id, is_committed
+FROM request_logs
+WHERE request_id = :request_id
+FOR UPDATE;
+
+-- fail if already committed or invalid state
+
+INSERT INTO usage_logs (
+  token_id,
+  member_id,
+  request_id,
+  media_item_id,
+  quota_used,
+  created_at
+) VALUES (
+  :token_id,
+  :member_id,
+  :request_id,
+  :media_item_id,
+  1,
+  NOW()
+);
+
+UPDATE tokens
+SET total_quota_remaining = total_quota_remaining - 1,
+    updated_at = NOW()
+WHERE id = :token_id
+  AND total_quota_remaining > 0;
+
+INSERT INTO daily_usage (
+  token_id,
+  member_id,
+  usage_date,
+  request_count
+) VALUES (
+  :token_id,
+  :member_id,
+  :usage_date,
+  1
+)
+ON CONFLICT (token_id, member_id, usage_date)
+DO UPDATE SET request_count = daily_usage.request_count + 1;
+
+UPDATE request_logs
+SET is_committed = TRUE,
+    status = 'success',
+    updated_at = NOW()
+WHERE request_id = :request_id;
+
+COMMIT;
+```
+
+Rules:
+
+* only commit-success may deduct quota
+* validation must never deduct quota
+* duplicate-safe and idempotent behavior must be enforced server-side
 
 ### C.16.6 Middleware Layer
+
 Required middleware:
-- serviceAuthMiddleware
-- requestLoggerMiddleware
-- errorHandlerMiddleware
-- rateLimiter (basic)
-- validationMiddleware (schema-based)
+
+* `serviceAuthMiddleware`
+* `adminSessionMiddleware`
+* `requestLoggerMiddleware`
+* `errorHandlerMiddleware`
+* `rateLimiterMiddleware`
+* `validationMiddleware` (schema-based)
+* `requestIdMiddleware`
+
+Rules:
+
+* every request should have a correlation/request ID
+* admin auth and service-key auth must remain separate
+* validation failures should map to stable error codes where possible
 
 ### C.16.7 Delivery Payload System
-- use DB-stored delivery token
-- include:
-   - request_id
-   - token_id
-   - expiry timestamp
+
+Use DB-stored delivery token.
+
+Store:
+
+* request_id
+* token_id
+* telegram_user_id
+* expiry timestamp
+* is_used
+* created_at
 
 Rules:
-- short-lived (≤ 3 minutes)
-- validated by backend before delivery
-- one-time use enforced via DB record
+
+* short-lived (≤ 3 minutes)
+* validated by backend before delivery
+* one-time use enforced via DB record
+* delivery verification must not deduct quota
+
+Example delivery token row:
+
+```json
+{
+  "delivery_token": "dlp_xxxxx",
+  "request_id": "req_01J...",
+  "token_id": "tok_01J...",
+  "telegram_user_id": 123456789,
+  "expires_at": "2026-03-29T12:03:00Z",
+  "is_used": false
+}
+```
 
 ### C.16.8 Retry & Job Handling
-- retry delivery up to 3 times
-- use simple retry loop (Phase 1)
-- optional future:
-   - queue system (BullMQ)
+
+* retry delivery up to 3 times
+* use simple retry loop in Phase 1
+* queue system is optional future work
 
 Admin notification trigger:
-- send failure
-- abnormal error
+
+* delivery failure after max retries
+* abnormal internal error
+* repeated verification failures
+* payment review backlog thresholds (optional later)
+
+Retry flow example:
+
+```json
+{
+  "request_id": "req_01J...",
+  "retry_count": 3,
+  "final_status": "failed",
+  "quota_effect": "none",
+  "admin_notification_queued": true
+}
+```
 
 ### C.16.9 Logging Strategy
+
 Log types:
-- request logs
-- token verification logs
-- payment logs
-- admin logs
-- error logs
+
+* request logs
+* token verification logs
+* payment logs
+* admin logs
+* error logs
+* delivery logs
+* configuration change logs
 
 Rules:
-- do not overwrite logs
-- append-only for audit-critical logs
+
+* do not overwrite logs
+* append-only for audit-critical logs
+* request_logs and usage_logs must remain reconcilable
+* admin_action_logs must store before/after when meaningful
 
 ### C.16.10 Environment Config
-.env structure:
-- DATABASE_URL=
-- SERVICE_KEY_PRIMARY_BOT=
-- SERVICE_KEY_DELIVERY_BOT=
-- SERVICE_KEY_WEBAPP=
-- DELIVERY_TOKEN_SECRET=
-- TOKEN_HASH_SECRET=
-- APP_ENV=production/staging
+
+Example `.env` structure:
+
+```dotenv
+APP_ENV=production
+PORT=3000
+DATABASE_URL=postgres://user:pass@localhost:5432/movievirus
+SERVICE_KEY_PRIMARY_BOT=svc_primary_xxxxx
+SERVICE_KEY_DELIVERY_BOT=svc_delivery_xxxxx
+SERVICE_KEY_WEBAPP=svc_webapp_xxxxx
+TOKEN_HASH_SECRET=tok_hash_xxxxx
+SESSION_SECRET=sess_xxxxx
+TELEGRAM_PRIMARY_BOT_TOKEN=123:abc
+TELEGRAM_DELIVERY_BOT_TOKEN=456:def
+LOG_LEVEL=info
+```
+
+Rules:
+
+* do not store live secrets in repo
+* real runtime secrets must be environment-injected
+* service keys must never be exposed to user clients
+* no `DELIVERY_TOKEN_SECRET` is required if delivery tokens are DB-stored opaque tokens rather than signed payloads
 
 ### C.16.11 Phase 1 Build Order
-1. Setup project + DB connection
-2. Implement auth middleware
-3. Implement token validation module
-4. Implement request validation
-5. Implement commit success logic
-6. Implement delivery payload system
-7. Implement search endpoints
-8. Implement payment endpoints
-9. Implement admin endpoints
-10. Add logging + error handling
+
+1. setup project + DB connection
+2. implement internal auth middleware
+3. implement token validation + linked-account module
+4. implement quota + daily cap enforcement
+5. implement request validation
+6. implement commit success logic
+7. implement delivery payload system
+8. implement search endpoints
+9. implement payment endpoints
+10. implement admin endpoints
+11. implement dynamic content + button resolution
+12. add logging + error handling
+13. add admin WebApp operational screens
 
 ### C.16.12 Phase 1 Constraints
-- single server (no microservices)
-- no queue system required initially
-- no caching layer required initially
-- keep logic centralized
+
+* single server (no microservices)
+* no queue system required initially
+* no Redis caching required initially
+* keep logic centralized
+* avoid overengineering
+* prioritize correctness in entitlement and audit paths over premature optimization
 
 ### C.16.13 Future Expansion Ready
-- queue system (BullMQ)
-- Redis caching
-- multi-instance scaling
-- load balancer
-- analytics dashboard
+
+* queue system (BullMQ)
+* Redis caching
+* multi-instance scaling
+* load balancer
+* analytics dashboard
+* advanced admin role/permission model
+* event-driven notifications
+* richer observability pipeline
+
+````
 
 ---
 
@@ -5093,11 +5557,13 @@ System migration must NOT be treated as direct database restore.
 Rules:
 - new system uses different schema and logic
 - old data must be transformed before import
-- migration must preserve:
-   - tokens
-   - user associations
-   - usage history (if possible)
-   - payment records
+- migration must preserve where possible:
+  - tokens or equivalent entitlement identity
+  - user associations
+  - quota correctness
+  - payment records
+  - media references
+  - audit-relevant history
 
 Purpose:
 - ensure clean transition without corrupting new system design
@@ -5123,418 +5589,652 @@ Migration Impact:
 - tokens are primary entity in new system
 
 Therefore:
-- migration must convert "user subscription" → "token entitlement"
-- one user may become:
-   - one token
-   - OR one of multiple linked accounts under a shared token
+- migration must convert user subscription → token entitlement
+- one legacy user normally becomes:
+  - one member
+  - one token
+  - one linked account
 
 Rules:
-- do NOT directly copy plan_id logic
-- must reconstruct entitlement using quota-based plans
+- do NOT directly copy legacy `plan_id` logic into new quota-based entitlement
+- do NOT directly preserve legacy expiry as a standard-plan requirement
+- standard migrated plans should become quota-based and non-expiring unless explicitly flagged as special-case carryover plans
 
 ### C.17.2 VPS-1 Backup Requirements
-Before any implementation:
+Before any implementation or cutover:
 
 Create full backup of VPS-1:
-1. Database dump
+1. database dump
    - full SQL dump
    - include all tables
-2. File storage (if applicable)
+2. file storage / references
    - media references
    - metadata
-3. Bot configuration
+3. bot configuration
    - environment variables
-   - tokens
+   - tokens / secrets / deployment notes
 
 Rules:
 - store backup securely
 - keep at least 2 copies
 - do not overwrite original
+- backup must be read-only preserved during migration validation window
 
 ### C.17.3 Old System Data Analysis
 Identify:
 - tables and structure
-- token format
+- legacy token format or subscription identifiers
 - user linkage model
 - request logs
 - payment records
+- media reference model
+- delivery reference dependencies
 
 Output:
 - data inventory document
+- mapping notes
+- integrity issues list
+- discard / preserve list
 
 ### C.17.4 Data Mapping Strategy (Revised Based on VPS-1)
 Migration must transform user-based system into token-based system.
 
 ---
 
-#### C.17.4.1 Users → Tokens + Linked Accounts
+#### C.17.4.1 Users → Members + Tokens + Linked Accounts
 Legacy:
 - users table contains subscription info
 
 New:
-For each active user:
-- create ONE token
-- assign:
-   - plan_id (mapped)
-   - total_quota (derived)
-   - expiry (mapped from end_date)
-- create linked account:
-   - telegram_user_id → token_linked_accounts
+For each active legacy user:
+- create one `members` row
+- create one `tokens` row
+- create one `linked_accounts` row
+- connect linked account to member + token
+
+Default Phase 1 migration rule:
+- 1 legacy user = 1 token
+- 1 legacy user = 1 linked account
 
 Rule:
-- 1 user = 1 token (default Phase 1 migration)
-- future merging/sharing can be handled manually
+- future merging/sharing can be handled manually after migration if needed
+- migration should prioritize correctness and simplicity, not automatic family/share reconstruction
 
 ---
 
 #### C.17.4.2 Plan Conversion
 Legacy:
 - plan_id + expiry_date
-- daily_usage only
+- daily usage only
+- no total quota
 
 New:
 - total quota required
+- daily cap required
+- max linked accounts required
 
 Conversion strategy:
 
 Option A (recommended):
-- derive quota based on remaining days × daily limit
+- derive remaining quota based on remaining entitlement value using remaining days × daily limit
 
 Example:
-- 10 days left × 3/day → 30 quota
+- 10 days left × 3/day → 30 quota remaining
 
 Option B:
-- fixed mapping per plan
+- fixed mapping per plan based on business-defined conversion table
 
-All conversions must be logged.
+Rules:
+- all conversions must be logged
+- conversion policy must be consistent across all migrated users
+- migrated standard entitlements should become quota-based and non-expiring
+- only explicitly chosen special carryover cases may retain expiry semantics
+
+Conversion log example:
+```json
+{
+  "legacy_user_id": 1001,
+  "legacy_plan_id": "plan_basic",
+  "remaining_days": 10,
+  "legacy_daily_limit": 3,
+  "derived_total_quota_remaining": 30,
+  "assigned_plan_key": "STARTER",
+  "plan_type": "standard",
+  "notes": "Converted from legacy expiry-based entitlement to quota-based token."
+}
+````
 
 ---
 
-#### C.17.4.3 Daily Usage → Usage Logs
+#### C.17.4.3 Daily Usage → Usage Logs / Daily Usage
+
 Legacy:
-- daily_usage (aggregated)
+
+* daily_usage may be aggregated
 
 New:
-- token_usage_logs (event-based)
+
+* `usage_logs` is event-based
+* `daily_usage` is counter-based
 
 Strategy:
-- cannot reconstruct exact history
-- create synthetic usage logs OR:
-   - initialize only remaining quota
+
+* exact historical replay may not be reconstructable
+* priority = correct remaining quota and safe current counters
+
+Options:
+
+* reconstruct minimal synthetic usage rows if reliable enough
+* OR initialize remaining quota only and begin new event logging from cutover date
 
 Rule:
-- prioritize quota correctness over full history
+
+* prioritize quota correctness over perfect historic replay
+* avoid inventing unreliable detailed history
 
 ---
 
-#### C.17.4.4 Delivery Tokens → IGNORE
+#### C.17.4.4 Delivery Tokens → DISCARD
+
 Legacy:
-- delivery_tokens are temporary access tokens
+
+* delivery tokens are temporary access tokens
 
 New:
-- not relevant for subscription
+
+* delivery tokens are runtime-only and DB-stored short-lived records
 
 Rule:
-- DO NOT migrate delivery_tokens
+
+* DO NOT migrate legacy delivery tokens as active records
+* expired / used short-lived access records should not become new entitlement records
 
 ---
 
 #### C.17.4.5 Requests / Events
+
 Legacy:
-- request_events + requests
+
+* request_events + requests
 
 New:
-- token_usage_logs + request logs
+
+* `request_logs` + `usage_logs`
 
 Strategy:
-- optional migration
-- keep only:
-   - successful deliveries (if needed)
+
+* optional detailed migration
+* preserve request history where operationally useful
+* successful request rows may be migrated if they improve audit/support value
+* failed request history may be selectively migrated if reliable
+
+Rule:
+
+* migrated failed requests must not imply quota deduction
+* migrated historical request detail should not distort current remaining quota
 
 ---
 
 #### C.17.4.6 Payments
+
 Legacy:
-- transactions table
+
+* transactions table or equivalent
 
 New:
-- payment_transactions
+
+* `payments`
 
 Rule:
-- migrate all completed payments
-- preserve:
-   - amount
-   - method
-   - approval metadata
+
+* migrate all completed/relevant payments
+* preserve:
+
+  * amount
+  * method
+  * approval metadata
+  * payment timestamps
+  * review notes where available
+
+If token linkage is uncertain:
+
+* preserve as historical payment row with nullable or indirect token relation
 
 ---
 
 #### C.17.4.7 Media Tables
+
 Legacy:
-- movies, series, series_episode_map
+
+* movies
+* series
+* series_episode_map
+* file/message reference tables
 
 New:
-- media_items, episodes
+
+* `media_items`
+* `episodes`
+* `media_files`
 
 Rule:
-- MUST migrate
-- preserve:
-   - file_chat_id
-   - file_message_id
-   - file_unique_id
+
+* MUST migrate operational media references
+* preserve:
+
+  * file_chat_id
+  * file_message_id
+  * file_unique_id if available
+  * quality / language / source metadata where useful
+
+Mapping:
+
+* movies → `media_items` (`media_type = 'movie'`)
+* series → `media_items` (`media_type = 'series'`)
+* episode mappings → `episodes`
+* file/message references → `media_files`
 
 ---
 
 #### C.17.4.8 Discard Tables
-Do NOT migrate:
-- delivery_tokens
-- message_delete_queue
-- expiry_reminders (optional future)
-- ai_events (optional analytics)
-- search_miss (optional analytics)
+
+Do NOT migrate as active new-system entities:
+
+* delivery_tokens
+* message_delete_queue
+* expiry_reminders (unless retained only as archive)
+* ai_events (optional analytics only)
+* search_miss (optional analytics only)
+* stale transient job/queue tables
+
+Rule:
+
+* discard operational noise
+* preserve only what supports entitlement correctness, delivery continuity, payment traceability, or audit value
 
 ---
 
 #### C.17.4.9 Integrity Fixes During Migration
+
 Must fix:
-- orphan records
-- expired but active users
-- inconsistent status
+
+* orphan records
+* expired-but-active legacy users
+* inconsistent status
+* duplicate Telegram user bindings
+* invalid payment state combinations
+* missing media reference pairs where recoverable
 
 Rule:
-- migration must clean data, not copy errors
+
+* migration must clean data, not copy errors
+* questionable rows should be quarantined for admin review rather than silently imported
 
 ### C.17.4.10 Detailed Table Mapping (Old → New)
+
 Mapping must be defined at table and field level.
 
-#### 1. Tokens
+#### 1. Tokens / Entitlements
+
 Old → New:
-- old_tokens.token → tokens.token_hash (hashed during migration)
-- old_tokens.created_at → tokens.created_at
-- old_tokens.expiry → tokens.expires_at
-- old_tokens.quota_remaining → tokens.total_quota_remaining
+
+* legacy subscription identity / token field → `tokens.token_hash` (hash during migration)
+* legacy created_at → `tokens.created_at`
+* legacy quota/derived entitlement value → `tokens.total_quota_remaining`
+* derived plan mapping → `tokens.plan_id`
+* derived status → `tokens.status`
+
+Rules:
+
+* generate masked token preview if token string exists and is migrated as entitlement identity
+* if old system has no reusable token, generate new secure token and preserve legacy reference in migration notes
+* do not store plaintext token long-term
 
 Additional:
-- map plan_id based on quota/price rules
-- generate token_masked during migration
-- set status:
-   - active / expired / exhausted
+
+* `tokens.total_quota` may be set from mapped plan total or derived starting quota policy
+* `tokens.plan_type` behavior should treat standard migrated plans as non-expiring unless flagged otherwise
 
 ---
 
-#### 2. Users → Linked Accounts
+#### 2. Users → Members / Linked Accounts
+
 Old → New:
-- old_users.telegram_user_id → token_linked_accounts.telegram_user_id
-- old_users.username → telegram_username
+
+* old_users.telegram_user_id → `members.telegram_user_id`
+* old_users.username → `members.username`
+* old_users.first_name / last_name → `members.first_name` / `members.last_name`
+* member identity → `linked_accounts.member_id`
 
 Rules:
-- group users under correct token
-- assign linked_at using earliest known usage or creation time
+
+* each migrated active user should normally receive one linked account row
+* assign `linked_accounts.linked_at` using earliest reliable user-created or subscription-created time
+* preserve only valid Telegram identity data
 
 ---
 
-#### 3. Requests → Usage Logs
+#### 3. Requests → Request Logs / Usage Logs
+
 Old → New:
-- old_requests.user_id → telegram_user_id
-- old_requests.token → token_id
-- old_requests.file_id → media_ref_id
-- old_requests.status → request_status
-- old_requests.created_at → requested_at
+
+* old_requests.user_id or telegram_user_id → `members.id` / linked member resolution
+* old_requests.entitlement_ref → `tokens.id`
+* old_requests.file_id / media reference → `request_logs.media_item_id`
+* old_requests.status → `request_logs.status`
+* old_requests.created_at → `request_logs.created_at`
 
 Rules:
-- only successful requests deduct quota
-- failed requests must have quota_delta = 0
+
+* only historically successful requests should imply quota usage
+* if migrated into `usage_logs`, failed requests must have no quota deduction
+* request history may be selectively migrated if confidence is high
 
 ---
 
 #### 4. Payments
+
 Old → New:
-- old_payments.amount → amount_mmk
-- old_payments.method → payment_method
-- old_payments.status → payment_status
-- old_payments.timestamp → created_at
+
+* old_payments.amount → `payments.amount`
+* old_payments.method → `payments.method`
+* old_payments.status → `payments.status`
+* old_payments.timestamp → `payments.created_at`
+* old review metadata → review notes / audit support fields
 
 Rules:
-- link payment → token where possible
-- otherwise keep as historical record
+
+* map statuses carefully
+* preserve historical truth even when old labels differ
+* keep rejected / pending records when useful for support history
 
 ---
 
 #### 5. Derived / Missing Fields
+
 Fields not present in old system must be generated:
-- token_hash → hash(old token)
-- token_masked → generate masked version
-- daily_usage_counters → recompute from usage logs
-- duplicate_guard_key → not required for historical data
+
+* secure token value or token hash
+* token masked preview
+* `daily_usage` counters from cutover onward
+* migration notes / mapping logs
+* `admin_action_logs` rows for manual corrections after migration
+
+Rule:
+
+* generated fields must be deterministic or clearly logged as generated
 
 ### C.17.4.11 Plan Assignment Logic
-Old system may not have structured plans.
+
+Old system may not have structured quota plans.
 
 Rules to assign plan_id:
 
 Option A (recommended):
-- map based on total quota:
-   - ≤30 → Starter
-   - ≤50 → Basic
-   - ≤100 → Plus
-   - ≤150 → Pro
-   - >150 → Premium
+
+* map based on derived remaining quota:
+
+  * ≤30 → Starter
+  * ≤50 → Basic
+  * ≤100 → Plus
+  * ≤150 → Pro
+  * > 150 → Premium
 
 Option B:
-- map based on payment amount
+
+* map based on payment amount
 
 Fallback:
-- assign default plan and log for admin review
+
+* assign default plan and log for admin review
 
 All mappings must be logged for audit.
 
 ### C.17.5 Migration Script
+
 Implementation:
-- create one-time migration script
-- read old DB
-- transform data
-- insert into new DB
+
+* create one-time migration script
+* read old DB
+* transform data
+* insert into new DB
 
 Rules:
-- do not bypass backend logic for critical fields
-- preserve audit integrity
-- log all migration actions
+
+* do not bypass target integrity rules without logging why
+* preserve audit integrity
+* log all migration actions
+* support dry-run mode before real import
 
 ### C.17.5.1 Migration Execution Logic
-Migration must run in controlled stages:
+
+Migration must run in controlled stages.
 
 ---
 
 #### Step 1. Extract
-- read old database
-- export tables:
-   - tokens
-   - users
-   - requests
-   - payments
+
+* read old database
+* export tables:
+
+  * subscriptions / tokens / equivalent entitlement source
+  * users
+  * requests
+  * payments
+  * media tables
 
 ---
 
 #### Step 2. Transform
+
 For each dataset:
 
-Tokens:
-- hash token
-- assign plan_id
-- compute status
+Entitlements:
+
+* hash token if reusable token exists
+* or generate new secure token
+* assign plan_id
+* compute derived quota
+* compute status
 
 Users:
-- group by token
-- deduplicate telegram_user_id
+
+* normalize Telegram identity
+* deduplicate `telegram_user_id`
 
 Requests:
-- map status
-- calculate quota_delta
+
+* map status
+* identify which rows affect quota history
 
 Payments:
-- normalize method names
-- map statuses
+
+* normalize method names
+* map statuses
+
+Media:
+
+* unify into `media_items`, `episodes`, `media_files`
 
 ---
 
 #### Step 3. Load
+
 Insert order (IMPORTANT):
+
 1. plans (pre-created)
-2. tokens
-3. members (optional)
-4. token_linked_accounts
-5. token_usage_logs
-6. payment_transactions
+2. admin_users (if seeded)
+3. members
+4. tokens
+5. linked_accounts
+6. media_items
+7. episodes
+8. media_files
+9. request_logs (optional / selective)
+10. usage_logs (optional / selective)
+11. daily_usage (if initialized)
+12. payments
 
 ---
 
 #### Step 4. Post-Processing
-- rebuild daily_usage_counters
-- validate quota consistency:
-   initial_quota - usage = remaining_quota
+
+* rebuild daily usage where needed
+* validate quota consistency:
+
+  * starting quota - committed usage = remaining quota
+* validate one linked account per migrated default token unless explicitly adjusted
 
 ---
 
 #### Step 5. Validation Checks
+
 Must verify:
-- total tokens count match
-- total usage count match
-- random token audit:
-   - quota correctness
-   - linked accounts correctness
+
+* total migrated active users count
+* total tokens count
+* quota correctness samples
+* linked account correctness samples
+* payment row counts
+* media reference integrity samples
 
 ---
 
 #### Step 6. Logging
+
 Migration script must log:
-- total migrated rows per table
-- skipped records
-- errors
+
+* total migrated rows per table
+* skipped records
+* quarantined records
+* generated tokens count
+* errors
+* manual review required list
+
+Migration report example:
+
+```json
+{
+  "members_migrated": 198,
+  "tokens_created": 198,
+  "linked_accounts_created": 198,
+  "payments_migrated": 176,
+  "media_items_migrated": 12450,
+  "episodes_migrated": 8420,
+  "media_files_migrated": 20870,
+  "quarantined_records": 7,
+  "errors": 0
+}
+```
 
 ### C.17.6 Migration Validation
+
 After import:
-- verify token counts
-- verify quota values
-- verify linked accounts
-- verify sample request logs
+
+* verify token counts
+* verify quota values
+* verify linked accounts
+* verify sample request logs
+* verify payment history samples
+* verify media reference playback/delivery for sampled items
 
 ### C.17.7 Rollback Strategy
+
 If migration fails:
-- restore VPS-1 system
-- do not partially switch users
+
+* keep VPS-1 as recoverable source
+* do not partially switch users
+* restore or discard failed target import safely
+* retry only after issue analysis
 
 Rules:
-- migration must be reversible
-- never overwrite original data
+
+* migration must be reversible
+* never overwrite original data
+* cutover should occur only after validation passes
 
 ### C.17.8 Migration Execution Plan
+
 Steps:
-1. Backup VPS-1
-2. Setup VPS-2 (new system)
-3. Run migration script
-4. Validate data
-5. Switch bot to new backend
-6. Monitor system
+
+1. backup VPS-1
+2. setup new backend/database
+3. run dry-run migration
+4. validate dry-run report
+5. run real migration
+6. validate target data
+7. switch bot/backend
+8. monitor system closely
+9. keep rollback window active
 
 ### C.17.9 Migration Risks
 
 #### C.17.9.1 Data Mismatch
-- data mismatch between systems
+
+Description:
+
+* data mismatch between systems
+
+Mitigation:
+
+* mapping review
+* sample validation
+* quarantine uncertain rows
 
 #### C.17.9.2 Lost Quota
-- lost quota or incorrect balances
+
+Description:
+
+* lost quota or incorrect remaining balances
+
+Mitigation:
+
+* conversion log
+* quota reconciliation
+* admin manual adjustment tools
 
 #### C.17.9.3 User Confusion
-- user confusion after migration
+
+Description:
+
+* users may not understand new token-based access model after migration
 
 Mitigation:
-- validation checks
-- admin manual adjustment tools
-- clear user messaging
+
+* clear messaging
+* support guidance
+* admin recovery tools
 
 #### C.17.9.4 Incorrect Plan Assignment
+
 Description:
-- wrong mapping may assign incorrect plan to tokens
+
+* wrong mapping may assign incorrect plan to tokens
 
 Impact:
-- unfair quota or limits
+
+* unfair quota or limits
 
 Mitigation:
-- log all mappings
-- allow admin review and correction
+
+* log all mappings
+* allow admin review and correction
 
 #### C.17.9.5 Incorrect Entitlement Conversion
+
 Description:
-- converting user-based subscription to quota-based token may miscalculate value
+
+* converting user-based subscription to quota-based token may miscalculate value
 
 Impact:
-- users receive too much or too little quota
+
+* users receive too much or too little quota
 
 Mitigation:
-- log all conversions
-- allow admin manual adjustment
-- validate sample users before full migration
 
+* log all conversions
+* allow admin manual adjustment
+* validate sample users before full migration
 ---
 
 # =========================================================
@@ -5545,12 +6245,13 @@ Mitigation:
 
 ### D.1 Foundation MVP
 Target:
-- plans
-- tokens
-- linked accounts
-- quota logic
-- core validation
+- plans (DB-driven)
+- tokens (secure, hashed)
+- linked accounts (slot-based)
+- total quota + daily cap logic
+- core validation (backend enforced)
 - secure token handling
+- dynamic message + button system
 
 Modules:
 - C.1
@@ -5558,106 +6259,132 @@ Modules:
 - C.3
 - C.5
 - part of C.10
+- part of C.14
+
+---
 
 ### D.1.X Phase-1 Build Lock Checklist
-
 Before coding is considered aligned, implementation must reflect these locked rules:
 
 * per-token + per-Telegram-account daily cap
 * 60-second duplicate protection window
-* auto-replace-oldest with 10-minute cooldown
+* deny new linking when max linked accounts is reached; direct user to contact admin
 * no time-based expiry for standard plans
 * Telegram Stars auto activation
 * admin quota restore with dedicated audit trail
 
 This checklist is mandatory for backend, WebApp, and bot integration prompts.
+- backend
+- Telegram bot
+- WebApp admin
+- all implementation prompts
 
-### D.2 Transfer and Recovery
+---
+
+### D.2 Linked Account & Recovery
 Target:
-- add account
-- replace account
-- lost device recovery
-- transfer code flow
+- add account (auto-link if slot available)
+- deny linking when limit reached
+- lost device recovery (admin reset)
+- linked account inspection
 
 Modules:
 - C.4
 - part of C.11
+- part of C.15
+
+---
 
 ### D.3 Payments and Activation
 Target:
-- Telegram Stars
+- Telegram Stars (auto approve)
 - local manual payment
-- OCR-assisted review
+- OCR-assisted review (assistant only)
 - admin approval flow
+- token creation + activation
 
 Modules:
 - C.7
 - part of C.9
 - part of C.12
+- part of C.14
 
-### D.4 Reporting and Audit
+---
+
+### D.4 Request, Delivery & Entitlement Enforcement
 Target:
-- admin history
-- user history
-- traceable logs
-- operational visibility
+- request validation (no quota deduction)
+- delivery payload system
+- commit-success atomic deduction
+- commit-failure logging
+- duplicate request protection
 
 Modules:
-- C.6
-- part of C.10
-- part of C.11
+- C.5
+- C.10
+- part of C.14
+- part of C.16
 
-### D.5 Language and UX Refinement
+---
+
+### D.5 Admin System & Audit
 Target:
-- Burmese-first UX
-- English toggle
-- multilingual content structure
-- cleaner menus and messages
+- WebApp admin control layer
+- quota restore tools
+- linked account reset
+- payment review UI
+- audit logs
+- system settings control
 
 Modules:
-- C.8
+- C.15
 - part of C.11
 - part of C.12
 
-### D.6 Advanced Controls
+---
+
+### D.6 Language and UX Refinement
 Target:
-- future anti-abuse
-- advanced notifications
-- family plan logic
-- promotional flows
-- analytics expansion
+- Burmese-first UX
+- English toggle
+- dynamic message templates
+- button set system
+- consistent status-to-UX mapping
 
 Modules:
-- future queue promotions
+- C.8
+- part of C.14
+- part of C.15
+
+---
 
 ### D.7 Legacy Discovery and Staging
 Target:
-- inspect legacy schema and logic
-- classify data
-- prepare PostgreSQL target mapping
-- build staging import and cleanup flow
+- inspect legacy schema
+- classify usable data
+- design transformation rules
+- staging import + cleanup
 
 Modules:
 - C.13
-- part of C.10
-- part of C.6
+- part of C.17
+
+---
 
 ### D.8 Migration and Cutover
 Target:
-- import normalized data into PostgreSQL
-- validate entitlement parity
-- validate media delivery references
-- switch traffic to the new environment
-- maintain rollback-safe legacy read-only window
+- transform legacy → token-based system
+- import into PostgreSQL
+- validate quota correctness
+- validate media delivery
+- switch to new backend
+- keep rollback-safe legacy window
 
 Modules:
-- C.13
+- C.17
 - part of C.2
 - part of C.6
-- part of C.9
 - part of C.10
-
----
 
 # =========================================================
 # E. DEPENDENCIES
@@ -5666,58 +6393,105 @@ Modules:
 ## E. Dependencies
 
 ### E.1 Core Token Engine
-Required before request enforcement, payments, and history.
-
-### E.2 Linked Account Engine
-Required before transfer/recovery and multi-account enforcement.
-
-### E.3 Payment Review Workflow
-Required before manual payment activation logic.
-
-### E.4 Audit Logging Layer
-Required before advanced admin reporting and dispute handling.
-
-### E.5 Message Content Layer
-Required before multilingual scaling and consistent UI text control.
-
-### E.6 Legacy Data Backup Set
-Required before migration work begins. Must include legacy SQLite DB, code snapshot, env/config snapshot, and service definitions.
-
-### E.7 PostgreSQL Target Schema
-Required before staging import, mapping validation, and constraint enforcement.
-
-### E.8 Legacy-to-Target Mapping Rules
-Required before member, payment, media, and analytics import logic can be finalized.
-
-### E.9 Delivery Reference Validation
-Required before cutover to confirm inherited Telegram source references remain usable on the new system.
-
-### E.10 Backend API Layer
-Required so the Telegram bot depends on backend APIs for:
-- token validation
-- quota checks
-- linked-account checks
-- usage logging
-- payment state lookup
-
-### E.11 WebApp Admin Layer
-Required before authoritative member management, payment review, quota adjustment, and support operations can be considered complete.
-
-### E.12 Atomic Entitlement Transaction Layer
-Required before production release so quota deduction, daily counter update, and usage logging succeed or fail together. This prevents double deduction, partial writes, and quota drift under concurrent requests.
-
-### E.13 Backend API Enforcement Layer
-All business rules must be enforced via backend API.
-Bot and WebApp must act as clients only.
-
 Required before:
-- production deployment
-- multi-bot setup
-
-### E.14 Unified WebApp Admin Portal
-Required before production operations can fully move away from Telegram-admin-only workflows. The portal must cover token/member/payment/log/media management through backend APIs with audit-safe write paths.
+- request validation
+- quota enforcement
+- payment activation
+- linked-account logic
 
 ---
+
+### E.2 Linked Account Engine
+Required before:
+- multi-account enforcement
+- recovery/reset flows
+- request validation
+
+---
+
+### E.3 Payment Workflow
+Required before:
+- manual payment activation
+- token generation
+- entitlement assignment
+
+---
+
+### E.4 Audit Logging Layer
+Required before:
+- admin operations
+- dispute handling
+- quota restoration
+- payment review
+
+---
+
+### E.5 Dynamic Content System
+Required before:
+- multilingual UX
+- message rendering
+- button rendering
+
+---
+
+### E.6 Backend API Layer
+Required before:
+- bot integration
+- WebApp integration
+
+Rules:
+- ALL enforcement must go through backend
+- bot/WebApp must not implement business rules independently
+
+---
+
+### E.7 Atomic Transaction Layer
+Required before production:
+- quota deduction
+- request commit
+- daily counter update
+
+---
+
+### E.8 WebApp Admin System
+Required before:
+- production support
+- payment approval
+- token management
+
+---
+
+### E.9 System Settings Engine
+Required before:
+- duplicate window control
+- cooldown logic
+- retry limits
+
+---
+
+### E.10 Legacy Migration Inputs
+Required before migration:
+- database backup
+- schema mapping
+- transformation rules
+
+---
+
+### E.11 Media Reference Validation
+Required before cutover:
+- confirm Telegram file references still valid
+
+---
+
+### E.12 Configuration Runtime Layer
+Required before:
+- dynamic plan loading
+- message override
+- button resolution
+
+Rules:
+- DB config overrides code defaults
+- fallback must always exist
 
 # =========================================================
 # F. RISKS
@@ -5731,231 +6505,125 @@ Risk:
 
 Mitigation:
 - linked-account slot limits
-- logging
-- revoke/reissue
-- future anti-abuse controls
+- audit logs
+- revoke/reissue tools
 
-### F.2 OCR Reliability Risk
+---
+
+### F.2 Payment Fraud Risk
 Risk:
-- screenshot OCR may be inaccurate or manipulated
+- fake or manipulated payment proof
 
 Mitigation:
 - OCR as assistant only
-- admin review
-- review logs
-
-### F.3 Scope Creep Risk
-Risk:
-- too many advanced features too early
-
-Mitigation:
-- phase-by-phase planning
-- strict module boundaries
-- queue-first approach
-
-### F.4 Data Complexity Risk
-Risk:
-- poor schema causes reporting and workflow pain later
-
-Mitigation:
-- proper database planning
-- traceable entities
-- logging-first mindset
-
-### F.5 Entitlement Carry-Over Risk
-Risk:
-- active members may lose time, quota continuity, or status accuracy during migration
-
-Mitigation:
-- recompute entitlement from authoritative dates
-- preserve legacy references
-- validate active user samples before cutover
-
-### F.6 Delivery Reference Risk
-Risk:
-- inherited Telegram message references may fail on the new environment if channel access or message integrity differs
-
-Mitigation:
-- sample delivery validation
-- fallback remediation queue
-- do not decommission legacy infrastructure before parity confirmation
-
-### F.7 Legacy Security Debt Risk
-Risk:
-- insecure legacy patterns may be copied into the new system
-
-Mitigation:
-- PostgreSQL target redesign
-- hashed token storage
-- foreign key enforcement
-- secured admin exposure
-- migration-specific security review
-
-### F.8 Data Mapping Risk
-Risk:
-- weakly typed legacy SQLite fields and orphan rows may import incorrectly into normalized PostgreSQL structures
-
-Mitigation:
-- staging cleanup
-- typed transformation rules
-- rejection logging
-- import audit tables
-
-### F.9 Hardcoded Infrastructure Naming Risk
-Risk:
-- personal labels such as VPS-1 and VPS-2 may accidentally leak into code, config, or logic and reduce portability
-
-Mitigation:
-- enforce environment-based configuration
-- use role-based architecture instead of personal server labels
-- keep prompts and code deployment-agnostic
-
-### F.10 Split Authority Risk
-Risk:
-- business state may become inconsistent if Telegram and WebApp both act as separate authorities
-
-Mitigation:
-- WebApp/backend as source of truth
-- bot reads and enforces backend state only
-- audit all admin-side modifications centrally
-
-### F.11 Concurrent Quota Deduction Risk
-Risk:
-- simultaneous requests from linked accounts may cause double deduction, stale daily-cap checks, or mismatched remaining quota if updates are not atomic
-
-Mitigation:
-- transaction-based delivery commit
-- row-level locking or equivalent safe concurrency control on token and daily counter rows
-- duplicate guard key for short-window repeat requests
-- append-only usage log before/with quota mutation trace
-
-### F.11.1 Concurrent Link Replacement Risk
-
-Risk:
-
-* simultaneous validation attempts from different Telegram accounts could trigger conflicting replace-oldest actions
-
-Mitigation:
-
-* lock token row and active linked-account rows during replacement evaluation
-* enforce replacement cooldown in the same transaction
-* write one authoritative account-change log for the winning transaction only
-
-Impact if ignored:
-
-* duplicate active links
-* incorrect slot counts
-* support disputes about account removal
-
-### F.12 Auto Replacement Confusion Risk
-Description:
-- users may not realize their account was replaced
-
-Mitigation:
-- clear notification message on replacement
-- optional future: replacement history view in WebApp
-
-### F.13 Delivery Payload Replay/Tamper Risk
-Risk:
-- users may reuse, forward, or tamper with delivery links/buttons to attempt unauthorized access
-
-Mitigation:
-- DB-stored short-lived delivery tokens
-- backend verification before delivery
-- telegram_user_id binding where applicable
-- one-time-use enforced via DB record
-- clear expiry handling and delivery-failure logging
-
-### F.14 Admin Portal Overreach Risk
-Risk:
-- a powerful WebApp may accidentally bypass business rules or become a direct-database shortcut if implemented carelessly
-
-Mitigation:
-- all writes must go through backend service/API layer
-- direct UI-to-database mutation must be avoided
-- every mutation must create admin_action_logs and domain-specific logs where applicable
-- destructive actions require explicit confirmation
-
-### F.15 Button-State Mismatch Risk
-Description:
-- buttons shown do not match actual backend state
-
-Examples:
-- showing "Request File" when quota exhausted
-- showing "Upgrade" when already highest plan
-
-Impact:
-- user confusion
-- support load increase
-
-Mitigation:
-- backend must always validate state before generating buttons
-- never rely on client-side assumptions
-- centralize button decision logic
-
-### F.16 State-to-UX Desynchronization Risk
-Description:
-- backend state does not match displayed message or buttons
-
-Examples:
-- quota exhausted but still shows request button
-- token invalid but shows download button
-
-Impact:
-- user confusion
-- incorrect actions
-- support overhead
-
-Mitigation:
-- enforce centralized state → UX mapping
-- do not allow direct message or button rendering outside mapping layer
-- validate mapping coverage for all states
-
-### F.17 Misconfiguration Risk (Admin Panel)
-Description:
-- incorrect admin changes can break system behavior
-
-Examples:
-- setting quota to zero
-- removing all buttons from a critical flow
-- invalid message templates
-
-Impact:
-- broken UX
-- blocked users
-- operational disruption
-
-Mitigation:
-- validation rules in WebApp
-- fallback to default values
-- audit logs for rollback
-- optional confirmation for critical changes
-
-### F.18 Inconsistent Admin Decisions
-Description:
-- different decisions for similar cases
-
-Impact:
-- unfair system behavior
-- user dissatisfaction
-
-Mitigation:
-- follow defined playbook strictly
-- standardize responses and actions
-
-### F.19 Manual Override Abuse
-Description:
-- excessive manual quota restoration or approvals
-
-Impact:
-- revenue loss
-- system imbalance
-
-Mitigation:
-- audit logs review
-- limit admin actions where needed (future)
+- admin approval required
+- audit logs
 
 ---
+
+### F.3 Quota Integrity Risk
+Risk:
+- incorrect quota deduction
+
+Mitigation:
+- atomic commit-success transaction
+- idempotent request handling
+- audit logs
+
+---
+
+### F.4 Duplicate Request Risk
+Risk:
+- multiple rapid requests deduct quota
+
+Mitigation:
+- server-side duplicate window
+- duplicate guard key
+
+---
+
+### F.5 Linked Account Limit Conflict
+Risk:
+- multiple users trying to link simultaneously
+
+Mitigation:
+- deny new linking when limit reached
+- no auto replacement
+- admin-controlled reset
+
+---
+
+### F.6 Delivery Failure Risk
+Risk:
+- file not delivered after validation
+
+Mitigation:
+- retry logic
+- commit-failure logging
+- no quota deduction on failure
+
+---
+
+### F.7 Backend Authority Risk
+Risk:
+- bot/WebApp bypass backend rules
+
+Mitigation:
+- strict API enforcement
+- no client-side logic
+
+---
+
+### F.8 Configuration Risk
+Risk:
+- admin misconfiguration breaks system
+
+Mitigation:
+- validation rules
+- fallback values
+- audit logs
+
+---
+
+### F.9 Migration Risk
+Risk:
+- incorrect data conversion
+
+Mitigation:
+- staged migration
+- validation checks
+- audit logs
+
+---
+
+### F.10 Concurrency Risk
+Risk:
+- multiple requests causing inconsistent quota
+
+Mitigation:
+- DB transactions
+- row locking
+- idempotency
+
+---
+
+### F.11 UX-State Mismatch Risk
+Risk:
+- UI does not match backend state
+
+Mitigation:
+- backend controls message + buttons
+- no client-side assumptions
+
+---
+
+### F.12 Admin Abuse Risk
+Risk:
+- excessive manual overrides
+
+Mitigation:
+- audit logs
+- future admin role limits
 
 # =========================================================
 # G. FUTURE ADDITIONS QUEUE
@@ -5963,40 +6631,58 @@ Mitigation:
 
 ## G. Future Additions Queue
 
-### G.1 PIN or 2-Step Verification
-Potential later enhancement for sensitive actions.
-
-### G.2 Family Plan Logic
-Potential later enhancement for higher-tier shared usage logic.
-
-### G.3 Promotional Tokens
-Potential later enhancement for campaigns or marketing offers.
-
-### G.4 Category-Based Restrictions
-Potential later enhancement for limiting certain content by plan.
-
-### G.5 Analytics Dashboard
-Potential later enhancement for usage, revenue, and operational insights.
-
-### G.6 Advanced Anti-Abuse Scoring
-Potential later enhancement for suspicious activity analysis.
-
-### G.7 Migration Dry-Run Checker
-Potential later enhancement for repeatable pre-cutover validation.
-
-### G.8 Media Reference Health Scanner
-Potential later enhancement for checking inherited Telegram delivery references at scale.
-
-### G.9 Legacy Plan Retirement Workflow
-Potential later enhancement for converting legacy carried-over users into fully native plan structures on renewal.
-
-### G.10 Self-Service Migration Status Checks
-Potential later enhancement for letting users check migration-related account status where appropriate.
-
-### G.11 Post-Migration Analytics Parity Dashboard
-Potential later enhancement for comparing old and new operational metrics after cutover.
+### G.1 PIN / 2-Step Verification
+For sensitive actions.
 
 ---
+
+### G.2 Family Plan Logic
+Shared token with controlled slots.
+
+---
+
+### G.3 Promotional Tokens
+Marketing campaigns and bonus quota.
+
+---
+
+### G.4 Category Restrictions
+Plan-based content limitation.
+
+---
+
+### G.5 Analytics Dashboard
+Usage, revenue, system insights.
+
+---
+
+### G.6 Anti-Abuse Scoring
+Behavior-based risk detection.
+
+---
+
+### G.7 Queue System (BullMQ)
+For delivery and background jobs.
+
+---
+
+### G.8 Redis Caching Layer
+Performance optimization.
+
+---
+
+### G.9 Self-Service Account Reset
+User-initiated limited reset.
+
+---
+
+### G.10 Migration Tools
+Dry-run validation + reporting.
+
+---
+
+### G.11 Notification System
+Advanced alerts and reminders.
 
 # =========================================================
 # H. PROMPT SOURCE AND IMPLEMENTATION FOCUS
@@ -6009,54 +6695,43 @@ Potential later enhancement for comparing old and new operational metrics after 
 ## H.1 Prompt Source
 
 ### H.1.1 Prompt Use Rule
-This section exists so future prompts can be generated from the implementation plan without rewriting everything.
+This document is the source of truth for generating implementation prompts.
 
-### H.1.2 Prompt Types to Generate Later
-- VS Code implementation prompt by phase
-- VS Code implementation prompt by module
-- review/audit prompt
-- database design prompt
-- workflow prompt
-- payment logic prompt
-- UI/UX prompt
-- bug-fix prompt
-- refactor prompt
+---
+
+### H.1.2 Prompt Types
+- backend implementation
+- bot logic
+- WebApp UI
+- database design
+- migration scripts
+- audit/review prompts
+- bug fixing
+
+---
 
 ### H.1.3 Prompt Generation Rule
-Always generate implementation prompts from the latest updated source sections, not from outdated memory.
+- always use latest version of document
+- never use outdated logic
 
-### H.1.4 Prompt Environment Rule
-When generating implementation prompts:
-- do not reference VPS-1 or VPS-2 as if they are machine-known identifiers
-- use terms such as:
-  - legacy server
-  - new server
-  - production environment
-  - backend server
-  - bot server
-  - database server
-- use environment variables, service roles, and deployment metadata instead of owner-friendly nicknames
+---
 
-### H.1.5 Migration Prompt Source Add
-When generating migration or database prompts:
-- treat legacy SQLite as source only
-- target PostgreSQL for the new system
-- preserve active member entitlements
-- preserve payment and audit history where relevant
-- validate inherited Telegram media delivery references
-- normalize and clean legacy rows before production import
+### H.1.4 Environment Rule
+Use generic terms:
+- backend server
+- bot server
+- database server
 
-### H.1.6 Legacy Runtime Input Notes
-Use legacy audit findings as authoritative migration input when such audit data is confirmed:
-- Ubuntu 22.04.1 LTS
-- Python 3.10
-- python-telegram-bot
-- aiosqlite
-- SQLite media.db
-- delivery via `copy_message` using `file_chat_id + file_message_id`
-- active subscriptions and legacy plans preserved through migration
-- movies and series index reuse preferred over re-indexing
-- old short-lived delivery tokens should not drive target design
+Avoid:
+- VPS-1 / VPS-2 naming in code
+
+---
+
+### H.1.5 Migration Prompt Rules
+- source = legacy SQLite
+- target = PostgreSQL
+- transform, do not copy
+- preserve entitlement correctness
 
 ---
 
@@ -6066,19 +6741,24 @@ Use legacy audit findings as authoritative migration input when such audit data 
 
 ## H.2 Current Implementation Focus
 
-- planning only
-- PostgreSQL target schema
-- legacy migration design
-- WebApp-first member management architecture
-- refine modules and phases first
-- keep future build prompts consistent with this document
+- backend-first architecture
+- PostgreSQL schema
+- API contract implementation
+- admin system
+- migration planning
 
 ---
 
 # =========================================================
-# H.3 FINAL PLANNING NOTE
+# H.3 FINAL NOTE
 # =========================================================
 
 ## H.3 Final Planning Note
 
-This document is the adjustable implementation blueprint for MovieVirus. It should be updated feature by feature, module by module, phase by phase, and section by section as the product definition becomes more mature.
+This document is the evolving blueprint of MovieVirus.
+
+Rules:
+- update by section, not rewrite
+- maintain consistency across modules
+- preserve auditability
+- prioritize correctness over shortcuts
