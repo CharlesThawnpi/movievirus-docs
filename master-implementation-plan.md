@@ -1547,7 +1547,54 @@ Rules:
 Prefer Burmese-first UI with English toggle.
 
 ### C.8.2 Content Storage Rule
-Store content by message key with Burmese and English variants.
+
+Store all user-facing bot/UI content by stable content key with Burmese and English variants.
+
+This includes:
+
+  * bot messages
+  * status messages
+  * denial messages
+  * menus
+  * button labels
+  * inline keyboard labels
+  * reminders
+  * notifications
+  * warnings
+  * payment instructions
+  * request-flow prompts
+  * help/support text
+
+Rules:
+
+  * visible text must not be hardcoded as the primary runtime source
+  * backend/bot should reference stable keys and load display content dynamically
+  * Burmese should remain the default language path
+  * English should be supported through language preference / toggle
+  * missing translations should fall back safely
+
+### C.8.3 Dynamic Content Governance Rule
+
+All bot-user visible content must be editable through the WebApp/admin content system without requiring code changes or redeployment for normal wording updates.
+
+Scope:
+
+  * bot menus
+  * button labels
+  * request prompts
+  * payment instructions
+  * warnings
+  * reminders
+  * notification text
+  * success/failure explanations
+  * support/help text
+
+Rules:
+
+  * code owns behavior and key selection
+  * content system owns visible wording
+  * business logic must not depend on exact visible sentence text
+  * audit and status contracts must remain tied to stable codes/keys
 
 ---
 
@@ -1598,16 +1645,17 @@ Telegram should reflect backend state, not define it.
 The WebApp admin system must be the primary operational control panel for MovieVirus.
 
 Phase 1 WebApp scope:
-- dashboard overview
-- plan management
-- token management
-- member/user lookup
-- linked-account management
-- payment review and approval
-- quota adjustment
-- request history lookup
-- audit log review
-- media catalog management
+  * dashboard overview
+  * plan management
+  * token management
+  * member/user lookup
+  * linked-account management
+  * payment review and approval
+  * quota adjustment
+  * request history lookup
+  * audit log review
+  * media catalog management
+  * content/localization management
 
 Rules:
 - WebApp must manage both:
@@ -1812,7 +1860,51 @@ Purpose:
 - preserve the useful VPS-1 media-editing capability
 - move it into the unified admin portal instead of keeping a separate media-only control surface
 
-### C.9.16 WebApp Permission Model (Phase 1)
+### C.9.16 Content and Localization Management Screen
+
+Content / Localization screen must support:
+
+  * list content keys
+  * filter by category
+  * search by key
+  * edit Burmese content
+  * edit English content
+  * edit menu labels
+  * edit button labels
+  * edit notification/reminder text
+  * edit warning/denial text
+  * edit payment instruction text
+  * preview rendered content where practical
+  * activate/deactivate non-critical content entries where appropriate
+  * inspect content change history where available
+
+Recommended categories:
+
+  * system_messages
+  * request_flow_messages
+  * payment_messages
+  * warning_messages
+  * reminder_messages
+  * notification_messages
+  * menu_labels
+  * button_labels
+  * help_and_support_messages
+
+Rules:
+
+  * content editing must not bypass stable key usage
+  * content publishing must not require app redeploy for normal text changes
+  * critical enforcement outcomes must remain mapped to backend status codes and message keys
+  * content changes should be auditable
+
+Purpose:
+
+  * centralize UX wording control
+  * reduce hardcoded text debt
+  * support Burmese-first operation with English toggle
+  * allow faster support and product iteration
+
+### C.9.17 WebApp Permission Model (Phase 1)
 Phase 1 default:
 - single admin account
 
@@ -1829,7 +1921,7 @@ Purpose:
 - keep Phase 1 simple
 - avoid repainting the architecture later
 
-### C.9.17 WebApp UI Rules
+### C.9.18 WebApp UI Rules
 UI rules:
 - Burmese-first labels with English toggle
 - clear status badges for:
@@ -2595,182 +2687,228 @@ Purpose:
 - allow self-check
 - reduce support load
 
-### C.10.16 Button Configuration (Future WebApp Control)
-Buttons must support configuration via backend (future WebApp).
+### C.10.16 Button Configuration (WebApp-Controlled)
 
-#### Table: button_templates (optional Phase 2)
+Buttons must support configuration via backend/WebApp as an active implementation requirement.
+
+#### Table: button_templates
+
 Fields:
-- id
-- button_key
-- label_key
-- action_type
-- action_payload_template
-- sort_order
-- is_active
-- created_at
+
+  * id
+  * button_key
+  * label_key
+  * action_type
+  * action_payload_template
+  * sort_order
+  * is_active
+  * created_at
+  * updated_at
 
 Purpose:
-- allow admin to customize:
-   - button labels
-   - ordering
-   - visibility
 
----
+  * allow admin to customize:
+    * button labels
+    * ordering
+    * visibility
+    * reusable action definitions
+
+* * *
 
 #### Button Set Logic (Runtime)
-Backend should define button sets:
+
+Backend should define button sets.
 
 Examples:
-- HOME_MENU
-- SEARCH_RESULTS
-- PLAN_LIST
-- QUOTA_EXCEEDED
-- TOKEN_REQUIRED
+
+  * HOME_MENU
+  * SEARCH_RESULTS
+  * PLAN_LIST
+  * QUOTA_EXCEEDED
+  * TOKEN_REQUIRED
 
 Each set contains:
-- ordered list of button types
 
----
+  * ordered list of button types
+
+* * *
 
 #### Example Button Set
-QUOTA_EXCEEDED:
-- BUY_PLAN
-- VIEW_PLAN
-- HELP
 
----
+QUOTA_EXCEEDED:
+
+  * BUY_PLAN
+  * VIEW_PLAN
+  * HELP
+
+* * *
 
 Rules:
-- button sets must be reusable
-- must be mapped to message_key or system state
-- must support future WebApp customization
 
+  * button sets must be reusable
+  * must be mapped to message_key or system state
+  * labels must be loaded through content keys, not hardcoded text
+  * WebApp should be able to control active/inactive state and order
+
+    
 ### C.10.17 Admin Configuration Data Model
-System must support dynamic configuration via WebApp.
 
----
+System must support dynamic configuration and dynamic content management via WebApp.
+
+* * *
 
 #### 1. message_templates
+
 Fields:
-- id
-- key (e.g., QUOTA_EXCEEDED)
-- lang (mm, en)
-- content
-- is_active
-- version
-- updated_by
-- updated_at
+
+  * id
+  * key (e.g., QUOTA_EXCEEDED, PAYMENT_PENDING, BTN_REQUEST_FILE_LABEL)
+  * lang (mm, en)
+  * category
+  * content
+  * is_active
+  * version
+  * updated_by
+  * updated_at
 
 Purpose:
-- allow admin to edit all user-facing messages
-- support multilingual system
-- allow safe updates without redeploy
 
----
+  * allow admin to edit all user-facing messages
+  * support multilingual system
+  * allow safe updates without redeploy
+
+* * *
 
 #### 2. button_templates
+
 Fields:
-- id
-- button_key (e.g., BUY_PLAN)
-- label_key (linked to message_templates)
-- action_type (callback / link)
-- action_payload_template
-- sort_order
-- is_active
-- updated_by
-- updated_at
+
+  * id
+  * button_key (e.g., BUY_PLAN)
+  * label_key (linked to message_templates)
+  * action_type (callback / link)
+  * action_payload_template
+  * sort_order
+  * is_active
+  * updated_by
+  * updated_at
 
 Purpose:
-- allow admin to control button labels and behavior
 
----
+  * allow admin to control button labels and behavior
+
+* * *
 
 #### 3. button_sets
-Fields:
-- id
-- set_key (e.g., PLAN_ACTIONS)
-- description
-- is_active
-- updated_at
 
----
+Fields:
+
+  * id
+  * set_key (e.g., PLAN_ACTIONS)
+  * description
+  * is_active
+  * updated_at
+
+* * *
 
 #### 4. button_set_items
+
 Fields:
-- id
-- set_id
-- button_key
-- sort_order
-- is_active
+
+  * id
+  * set_id
+  * button_key
+  * sort_order
+  * is_active
 
 Purpose:
-- define which buttons appear in each context
 
----
+  * define which buttons appear in each context
 
-#### 5. plan_definitions
+* * *
+
+#### 5. content_change_logs
+
 Fields:
-- id
-- plan_key (starter, basic, etc.)
-- name
-- price
-- total_quota
-- daily_cap
-- max_linked_accounts
-- is_active
-- updated_by
-- updated_at
+
+  * id
+  * content_key
+  * lang
+  * old_content
+  * new_content
+  * changed_by_admin_id
+  * changed_at
+  * notes
 
 Purpose:
-- allow admin to change plans without code changes
 
----
+  * preserve auditability for wording changes
+  * support rollback/review when content edits cause confusion
 
-#### 6. system_settings
+* * *
+
+#### 6. plan_definitions
+
 Fields:
-- key
-- value
-- description
-- updated_at
+
+  * id
+  * plan_key (starter, basic, etc.)
+  * name
+  * price
+  * total_quota
+  * daily_cap
+  * max_linked_accounts
+  * is_active
+  * updated_by
+  * updated_at
+
+Purpose:
+
+  * allow admin to change plans without code changes
+
+* * *
+
+#### 7. system_settings
+
+Fields:
+
+  * key
+  * value
+  * description
+  * updated_at
 
 Examples:
-- duplicate_window_seconds = 60
-- max_delivery_retry = 3
-- replacement_cooldown_seconds = 600
-- payment_pending_expiry_hours = 48
 
----
+  * duplicate_window_seconds = 60
+  * max_delivery_retry = 3
+  * replacement_cooldown_seconds = 600
+  * payment_pending_expiry_hours = 48
 
-#### 7. admin_audit_logs
+* * *
+
+#### 8. admin_audit_logs
+
 Fields:
-- id
-- admin_id
-- action_type
-- target_type
-- target_id
-- old_value
-- new_value
-- created_at
+
+  * id
+  * admin_id
+  * action_type
+  * target_type
+  * target_id
+  * old_value
+  * new_value
+  * created_at
 
 Purpose:
-- full traceability of admin actions
-- prevent silent data corruption
 
-### C.10.18 Plan Type & Duration Handling
-Add field:
-- plan_type (standard | special)
+  * full traceability of admin actions
+  * prevent silent data corruption
 
-Update rules:
-- duration_days:
-  - nullable
-  - only used if plan_type = special
-- entitlement logic:
-  - IF plan_type = standard → ignore duration_days
-  - IF plan_type = special → enforce expiry
+Rules:
 
-Purpose:
-- remove ambiguity in plan validation
-
+  * all user-facing content used by bot flows should come from this configuration/content layer
+  * all wording changes should remain separate from enforcement logic
+  * content keys must be stable even if visible wording changes
 ---
 
 # =========================================================
@@ -2852,6 +2990,17 @@ The WebApp should display operational alerts for:
 Purpose:
 - keep operational issues visible without relying only on Telegram alerts
 - support dashboard-driven administration
+
+### C.12.4 Dynamic Content Delivery Rule
+
+All notifications and bot-visible messages must be rendered from stable content keys through the dynamic content system.
+
+Rules:
+
+  * backend should return status code / message_key / button_set rather than relying on hardcoded visible text
+  * reminders, warnings, payment messages, and request-flow messages must follow the same system
+  * multilingual rendering should occur at runtime using user language preference and safe fallback behavior
+  * wording changes must not require bot redeploy for normal operational updates
 
 ---
 
@@ -3751,10 +3900,12 @@ User-facing status codes that bot/UI should map clearly:
 - PAYMENT_REJECTED
 
 Rules:
-- all denial reasons must be user-readable
-- replacement events should notify both the incoming requester and replaced account when reachable
-- send-failure events should notify requester and admin
-- delivery link expiry/delete timing should be made visible to user
+  * all denial reasons must be user-readable
+  * replacement events should notify both the incoming requester and replaced account when reachable
+  * send-failure events should notify requester and admin
+  * delivery link expiry/delete timing should be made visible to user
+  * bot/UI should map status codes to stable message keys, not depend on hardcoded visible sentences
+  * final visible wording for status, warning, reminder, and action prompts should come from the dynamic content system
 
 ### C.14.14 API Idempotency and Logging Rules
 Rules:
