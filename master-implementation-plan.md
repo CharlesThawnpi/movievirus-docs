@@ -222,6 +222,14 @@
   * Promoted multilingual bot content, buttons, menus, reminders, warnings, and notifications into WebApp-managed dynamic content
   * Added strict backend response-contract alignment for status_code, message_key, button_set_key, quota_effect, and log_type
   * Corrected section placement so content management is added under the real existing admin module structure
+
+### A.3.27 | 2026-03-29
+* Finalized Module 14 API contracts to match locked Phase-1 business rules
+* Removed outdated auto-replacement behavior from access APIs
+* Removed normal standard-plan expiry dependency from request/access APIs
+* Standardized API responses around status_code, message_key, button_set_key, quota_effect, and log_type
+* Aligned commit endpoints with post-delivery-only quota deduction and idempotent request handling
+* Expanded admin and configuration endpoints to support dynamic content, linked-account reset, quota restore, and audit-safe recovery flows
 ---
 
 # =========================================================
@@ -3756,10 +3764,10 @@ Success example:
 POST /api/v1/access/validate-and-link
 
 Purpose:
-- used when requesting user is not yet linked
-- validates token
-- links Telegram account
-- auto-replaces oldest linked account if plan limit is full
+- used when requesting Telegram account is not yet linked
+- validates plaintext token against backend
+- links Telegram account only if a free linked-account slot exists
+- denies linking when max linked accounts is already reached
 
 Request:
 ```json
@@ -3783,50 +3791,50 @@ Success without replacement:
 {
   "success": true,
   "code": "TOKEN_VALIDATED_AND_LINKED",
-  "message": "Token verified successfully.",
+  "message": "Token verified and Telegram account linked.",
   "data": {
-    "token_id": "tok_01J...",
-    "plan": {
-      "code": "BASIC",
-      "name": "Basic",
-      "total_quota_remaining": 47,
-      "daily_cap": 5,
-      "daily_remaining": 5,
-      "expires_at": "2026-06-25T00:00:00Z"
-    },
-    "linked": true,
-    "replacement": {
-      "performed": false,
-      "replaced_telegram_user_id": null
+    "decision": {
+      "status_code": "TOKEN_VALIDATED_AND_LINKED",
+      "message_key": "TOKEN_LINKED_SUCCESS",
+      "button_set_key": "MAIN_MENU",
+      "quota_effect": "none",
+      "log_type": "linked_account_added",
+      "metadata": {
+        "token_id": "tok_01J...",
+        "plan_code": "BASIC",
+        "total_quota_remaining": 47,
+        "daily_cap": 5,
+        "daily_remaining": 5,
+        "linked_account_action": "linked"
+      }
     }
   },
-  "meta": null
+  "meta": {
+    "request_id": "req_01J..."
+  }
 }
 ```
 
-Success with oldest-account replacement:
-```json
 {
-  "success": true,
-  "code": "TOKEN_VALIDATED_LINKED_OLDEST_REPLACED",
-  "message": "Token verified. Oldest linked account was replaced.",
+  "success": false,
+  "code": "LINKED_ACCOUNT_LIMIT_REACHED",
+  "message": "Linked account limit reached.",
   "data": {
-    "token_id": "tok_01J...",
-    "plan": {
-      "code": "PLUS",
-      "name": "Plus",
-      "total_quota_remaining": 92,
-      "daily_cap": 10,
-      "daily_remaining": 10,
-      "expires_at": "2026-06-25T00:00:00Z"
-    },
-    "linked": true,
-    "replacement": {
-      "performed": true,
-      "replaced_telegram_user_id": 987654321
+    "decision": {
+      "status_code": "LINKED_ACCOUNT_LIMIT_REACHED",
+      "message_key": "LINKED_ACCOUNT_LIMIT_REACHED",
+      "button_set_key": "HELP",
+      "quota_effect": "none",
+      "log_type": "validation_denied",
+      "metadata": {
+        "linked_account_action": "denied",
+        "contact_admin_required": true
+      }
     }
   },
-  "meta": null
+  "meta": {
+    "request_id": "req_01J..."
+  }
 }
 ```
 
@@ -3845,7 +3853,8 @@ POST /api/v1/access/validate-linked
 
 Purpose:
 - used for already-linked Telegram accounts
-- should not require token input again unless manually reset
+- should not require token input again unless link was reset or removed
+- validates entitlement status before request continues
 
 Request:
 ```json
@@ -3863,15 +3872,24 @@ Success example:
   "code": "LINKED_ACCESS_OK",
   "message": "Linked account validated.",
   "data": {
-    "token_id": "tok_01J...",
-    "plan_code": "BASIC",
-    "total_quota_remaining": 47,
-    "daily_remaining": 5,
-    "expires_at": "2026-06-25T00:00:00Z"
+    "decision": {
+      "status_code": "LINKED_ACCESS_OK",
+      "message_key": "LINKED_ACCESS_OK",
+      "button_set_key": "REQUEST_ACTIONS",
+      "quota_effect": "none",
+      "log_type": "validation_success",
+      "metadata": {
+        "token_id": "tok_01J...",
+        "plan_code": "BASIC",
+        "total_quota_remaining": 47,
+        "daily_remaining": 5
+      }
+    }
   },
-  "meta": null
+  "meta": {
+    "request_id": "req_01J..."
+  }
 }
-```
 
 Common denial codes:
 - LINK_NOT_FOUND
@@ -3886,7 +3904,9 @@ Common denial codes:
 POST /api/v1/requests/validate
 
 Purpose:
-- validates whether a file request may proceed before delivery link is issued
+- validates whether a file request may proceed before delivery token is issued
+- performs final entitlement checks before delivery starts
+- does NOT deduct quota
 
 Request:
 ```json
@@ -3908,17 +3928,26 @@ Success example:
   "code": "REQUEST_APPROVED",
   "message": "Request approved.",
   "data": {
-    "request_id": "req_01J...",
-    "token_id": "tok_01J...",
-    "duplicate_guard_key": "dup_01J...",
-    "total_quota_remaining": 47,
-    "daily_remaining": 5,
-    "delivery_payload": {
-      "delivery_token": "dlp_xxxxx",
-      "expires_at": "2026-03-27T12:03:00Z"
+    "decision": {
+      "status_code": "REQUEST_APPROVED",
+      "message_key": "REQUEST_CONFIRM",
+      "button_set_key": "REQUEST_CONFIRM",
+      "quota_effect": "none",
+      "log_type": "request_validated",
+      "metadata": {
+        "request_id": "req_01J...",
+        "token_id": "tok_01J...",
+        "duplicate_guard_key": "dup_01J...",
+        "total_quota_remaining": 47,
+        "daily_remaining": 5,
+        "delivery_token": "dlp_xxxxx",
+        "delivery_expires_at": "2026-03-29T12:03:00Z"
+      }
     }
   },
-  "meta": null
+  "meta": {
+    "request_id": "req_01J..."
+  }
 }
 ```
 
@@ -3927,11 +3956,22 @@ Duplicate example:
 {
   "success": false,
   "code": "DUPLICATE_REQUEST_IGNORED",
-  "message": "Same file was requested recently. Please wait a moment.",
+  "message": "Same file was requested recently.",
   "data": {
-    "duplicate_window_seconds": 45
+    "decision": {
+      "status_code": "DUPLICATE_REQUEST_IGNORED",
+      "message_key": "ERROR_RETRY",
+      "button_set_key": "BACK",
+      "quota_effect": "none",
+      "log_type": "duplicate_ignored",
+      "metadata": {
+        "duplicate_window_seconds": 60
+      }
+    }
   },
-  "meta": null
+  "meta": {
+    "request_id": "req_01J..."
+  }
 }
 ```
 
@@ -3950,6 +3990,7 @@ POST /api/v1/delivery/verify-payload
 Purpose:
 - called by delivery bot before sending file
 - validates DB-stored short-lived delivery token from primary bot
+- ensures delivery request belongs to the intended Telegram user
 
 Request:
 ```json
@@ -3966,19 +4007,30 @@ Success example:
   "code": "DELIVERY_PAYLOAD_VALID",
   "message": "Delivery payload verified.",
   "data": {
-    "request_id": "req_01J...",
-    "token_id": "tok_01J...",
-    "media_ref_id": "mov_100245",
-    "media_ref_type": "movie",
-    "delivery_window_seconds": 180,
-    "delete_after_seconds": 180,
-    "file_source": {
-      "mode": "telegram_reference",
-      "file_chat_id": -100444555666,
-      "file_message_id": 778899
+    "decision": {
+      "status_code": "DELIVERY_PAYLOAD_VALID",
+      "message_key": "REQUEST_PROCESSING",
+      "button_set_key": "NONE",
+      "quota_effect": "none",
+      "log_type": "delivery_verified",
+      "metadata": {
+        "request_id": "req_01J...",
+        "token_id": "tok_01J...",
+        "media_ref_id": "mov_100245",
+        "media_ref_type": "movie",
+        "delivery_window_seconds": 180,
+        "delete_after_seconds": 180,
+        "file_source": {
+          "mode": "telegram_reference",
+          "file_chat_id": -100444555666,
+          "file_message_id": 778899
+        }
+      }
     }
   },
-  "meta": null
+  "meta": {
+    "request_id": "req_01J..."
+  }
 }
 ```
 
@@ -3995,6 +4047,7 @@ POST /api/v1/requests/commit-success
 Purpose:
 - called only after delivery bot successfully sends the file
 - deducts quota and updates daily counter atomically
+- must be idempotent for the same request_id
 
 Request:
 ```json
@@ -4004,7 +4057,7 @@ Request:
   "delivery_result": {
     "delivery_chat_id": 123456789,
     "delivery_message_id": 999001,
-    "delivered_at": "2026-03-27T12:01:30Z"
+    "delivered_at": "2026-03-29T12:01:30Z"
   }
 }
 ```
@@ -4016,15 +4069,47 @@ Success example:
   "code": "REQUEST_COMMITTED",
   "message": "Quota deducted successfully.",
   "data": {
-    "token_id": "tok_01J...",
-    "quota_delta": 1,
-    "total_quota_remaining": 46,
-    "daily_remaining": 4
+    "decision": {
+      "status_code": "REQUEST_COMMITTED",
+      "message_key": "DOWNLOAD_BUTTON",
+      "button_set_key": "DOWNLOAD_ACTION",
+      "quota_effect": "decremented",
+      "log_type": "delivery_success",
+      "metadata": {
+        "token_id": "tok_01J...",
+        "quota_delta": 1,
+        "total_quota_remaining": 46,
+        "daily_remaining": 4
+      }
+    }
   },
-  "meta": null
+  "meta": {
+    "request_id": "req_01J..."
+  }
 }
 ```
-
+Already-committed idempotent example:
+{
+  "success": true,
+  "code": "REQUEST_ALREADY_COMMITTED",
+  "message": "Request was already committed earlier.",
+  "data": {
+    "decision": {
+      "status_code": "REQUEST_COMMITTED",
+      "message_key": "DOWNLOAD_BUTTON",
+      "button_set_key": "DOWNLOAD_ACTION",
+      "quota_effect": "none",
+      "log_type": "delivery_success_existing",
+      "metadata": {
+        "request_id": "req_01J...",
+        "idempotent_replay": true
+      }
+    }
+  },
+  "meta": {
+    "request_id": "req_01J..."
+  }
+}
 Denial codes:
 - REQUEST_NOT_FOUND
 - REQUEST_ALREADY_COMMITTED
@@ -4036,6 +4121,7 @@ POST /api/v1/requests/commit-failure
 
 Purpose:
 - called when delivery fails after up to 3 retries
+- records terminal delivery failure
 - must not deduct quota
 - should trigger admin notification workflow
 
@@ -4059,10 +4145,21 @@ Success example:
   "code": "REQUEST_FAILURE_RECORDED",
   "message": "Failure recorded. Quota not deducted.",
   "data": {
-    "admin_notification_queued": true,
-    "quota_delta": 0
+    "decision": {
+      "status_code": "REQUEST_FAILURE_RECORDED",
+      "message_key": "DELIVERY_FAILED",
+      "button_set_key": "RETRY_ACTION",
+      "quota_effect": "none",
+      "log_type": "delivery_failed",
+      "metadata": {
+        "admin_notification_queued": true,
+        "quota_delta": 0
+      }
+    }
   },
-  "meta": null
+  "meta": {
+    "request_id": "req_01J..."
+  }
 }
 
 Idempotency rule:
@@ -4077,7 +4174,7 @@ POST /api/v1/payments/telegram-stars/webhook
 
 Purpose:
 - receive confirmed Stars payment result
-- auto-approve and generate token immediately
+- auto-approve and generate token immediately in Phase 1
 
 Request:
 ```json
@@ -4097,13 +4194,23 @@ Success example:
   "code": "PAYMENT_APPROVED_TOKEN_CREATED",
   "message": "Payment approved and token created.",
   "data": {
-    "payment_transaction_id": "pay_01J...",
-    "token_id": "tok_01J...",
-    "token_masked": "MV-****-****-1A6N",
-    "plan_code": "BASIC",
-    "expires_at": "2026-06-25T00:00:00Z"
+    "decision": {
+      "status_code": "PAYMENT_APPROVED_TOKEN_CREATED",
+      "message_key": "PAYMENT_APPROVED",
+      "button_set_key": "MAIN_MENU",
+      "quota_effect": "none",
+      "log_type": "payment_approved",
+      "metadata": {
+        "payment_transaction_id": "pay_01J...",
+        "token_id": "tok_01J...",
+        "token_masked": "MV-****-****-1A6N",
+        "plan_code": "BASIC"
+      }
+    }
   },
-  "meta": null
+  "meta": {
+    "request_id": "req_01J..."
+  }
 }
 ```
 
@@ -4117,15 +4224,24 @@ Purpose:
 Request:
 ```json
 {
-  "plan_code": "PLUS",
-  "member": {
-    "display_name": "Example Buyer",
-    "phone_number": "09xxxxxxx"
+  "success": true,
+  "code": "PAYMENT_SUBMITTED",
+  "message": "Payment submitted for review.",
+  "data": {
+    "decision": {
+      "status_code": "PAYMENT_SUBMITTED",
+      "message_key": "PAYMENT_SUBMITTED",
+      "button_set_key": "NONE",
+      "quota_effect": "none",
+      "log_type": "payment_submitted",
+      "metadata": {
+        "payment_transaction_id": "pay_01J...",
+        "payment_status": "pending_review"
+      }
+    }
   },
-  "payment": {
-    "amount_mmk": 10000,
-    "payer_reference": "KBZ-123456",
-    "screenshot_file_id": "AgACAgUAAx..."
+  "meta": {
+    "request_id": "req_01J..."
   }
 }
 ```
@@ -4134,13 +4250,27 @@ Success example:
 ```json
 {
   "success": true,
-  "code": "PAYMENT_SUBMITTED",
-  "message": "Payment submitted for review.",
+  "code": "PAYMENT_APPROVED_TOKEN_CREATED",
+  "message": "Payment approved and token created.",
   "data": {
-    "payment_transaction_id": "pay_01J...",
-    "payment_status": "pending"
+    "decision": {
+      "status_code": "PAYMENT_APPROVED_TOKEN_CREATED",
+      "message_key": "PAYMENT_APPROVED",
+      "button_set_key": "MAIN_MENU",
+      "quota_effect": "none",
+      "log_type": "payment_approved",
+      "metadata": {
+        "payment_transaction_id": "pay_01J...",
+        "token_id": "tok_01J...",
+        "token_masked": "MV-****-****-1A6N",
+        "plan_code": "PLUS",
+        "delivery_action": "send_token_to_user"
+      }
+    }
   },
-  "meta": null
+  "meta": {
+    "request_id": "req_01J..."
+  }
 }
 ```
 
@@ -4182,8 +4312,8 @@ Request:
 
 ### C.14.12 Admin Plan and Token APIs
 
-GET /api/v1/admin/plans
-POST /api/v1/admin/plans
+GET /api/v1/admin/plans  
+POST /api/v1/admin/plans  
 PATCH /api/v1/admin/plans/{plan_id}
 
 Plan response example:
@@ -4200,12 +4330,23 @@ Plan response example:
     "total_quota": 200,
     "daily_cap": 20,
     "duration_days": null,
+    "plan_type": "standard",
     "max_linked_accounts": 5,
     "is_active": true
   },
-  "meta": null
+  "meta": {
+    "request_id": "req_01J..."
+  }
 }
 ```
+Quota adjustment example:
+
+{
+  "delta_quota": 5,
+  "reason_code": "manual_restore",
+  "notes": "Delivery failure recovery"
+}
+
 
 POST /api/v1/admin/tokens/create
 PATCH /api/v1/admin/tokens/{token_id}
@@ -4228,58 +4369,79 @@ Quota adjustment example:
 
 User-facing status codes that bot/UI should map clearly:
 
-  * TOKEN_REQUIRED
-  * INVALID_TOKEN
-  * TOKEN_SUSPENDED
-  * TOKEN_REVOKED
-  * TOKEN_EXHAUSTED
-  * TOKEN_DAILY_CAP_REACHED
-  * LINKED_ACCOUNT_LIMIT_REACHED
-  * VALIDATION_COOLDOWN_BLOCKED
-  * DUPLICATE_REQUEST_IGNORED
-  * REQUEST_APPROVED
-  * REQUEST_COMMITTED
-  * REQUEST_FAILURE_RECORDED
-  * PAYMENT_SUBMITTED
-  * PAYMENT_APPROVED_TOKEN_CREATED
-  * PAYMENT_REJECTED
+- TOKEN_REQUIRED
+- INVALID_TOKEN
+- TOKEN_VALIDATED_AND_LINKED
+- LINKED_ACCESS_OK
+- TOKEN_SUSPENDED
+- TOKEN_REVOKED
+- TOKEN_EXHAUSTED
+- TOKEN_DAILY_CAP_REACHED
+- LINKED_ACCOUNT_LIMIT_REACHED
+- VALIDATION_COOLDOWN_BLOCKED
+- DUPLICATE_REQUEST_IGNORED
+- REQUEST_APPROVED
+- REQUEST_COMMITTED
+- REQUEST_FAILURE_RECORDED
+- PAYMENT_SUBMITTED
+- PAYMENT_APPROVED_TOKEN_CREATED
+- PAYMENT_REJECTED
 
-Special-plan-only optional status:
-
-  * TOKEN_EXPIRED
+Optional special-plan-only status:
+- TOKEN_EXPIRED
 
 Rules:
-
-  * all denial reasons must be user-readable
-  * send-failure events should notify requester and admin
-  * final visible wording must come from message_key through the dynamic content system
-  * final visible actions must come from button_set_key through the button system
-  * normal standard plans should not emit expiry-based denial during normal operation
-  * bots and WebApp clients must not invent alternate status meaning outside backend contract
+- all denial reasons must be user-readable
+- send-failure events should notify requester and admin
+- final visible wording must come from message_key through the dynamic content system
+- final visible actions must come from button_set_key through the button system
+- normal standard plans should not emit expiry-based denial during normal operation
+- bots and WebApp clients must not invent alternate status meaning outside backend contract
 
 ### C.14.14 API Idempotency and Logging Rules
+
 Rules:
 - all mutating endpoints should accept or generate a request correlation ID
-- commit endpoints must be idempotent to prevent double deduction
+- request commit endpoints must be idempotent to prevent double deduction
 - duplicate request logic must be enforced server-side, not by bot memory
 - all admin mutation endpoints must create admin_action_logs
 - all verification failures should write token_verification_attempt_logs where relevant
-- all delivery failures should write token_usage_logs with zero quota deduction
+- all delivery failures should write token_usage_logs or equivalent request/usage failure records with zero quota deduction
+- all payment approval/rejection endpoints should create review/audit records
+- all linked-account reset and quota-adjustment operations must be auditable
 
 ### C.14.15 Core Logic Response Rules
 
 All entitlement-related endpoints must return backend-decided state, not UI guesses.
 
-Validation, request, delivery, and payment endpoints should keep the normal API envelope, while returning one strict backend decision object inside response data.
+Validation, request, delivery, and payment endpoints should keep the standard API envelope while returning one strict decision object in `data.decision`.
 
 Required decision fields:
+- status_code
+- message_key
+- button_set_key
+- quota_effect
+- log_type
+- metadata (optional)
 
-  * status_code
-  * message_key
-  * button_set_key
-  * quota_effect
-  * log_type
-  * metadata (optional)
+Quota effect values:
+- none
+- decremented
+
+Rules:
+- standard plans should not emit expiry-based denial during normal operation
+- quota and sharing state must drive primary UX
+- message and button selection must be derived from backend response data
+- quota_effect must be explicit so clients never guess whether quota changed
+- log_type must be explicit so support and audit interpretation stays consistent
+- metadata may enrich rendering and logging, but must not replace stable contract fields
+- only commit-success may return quota_effect = decremented
+- commit-success must be idempotent
+- duplicate request logic must be enforced server-side, not by bot memory
+
+State authority rule:
+- only backend services may mutate token status, payment status, linked-account state, quota counters, approved-token linkage, and delivery-session state
+- bots and WebApp clients must request backend decisions and render backend-decided results only
     
 Recommended response shape:
 
