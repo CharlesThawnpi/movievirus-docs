@@ -139,6 +139,12 @@ Purpose:
   * Standardized system outputs across backend, bot, and WebApp
   * Defined required response fields: status_code, message_key, button_set, quota_effect, log_action
   * Eliminated ambiguity in success/denial handling
+
+### A.4.12 | 2026-03-29
+  * Added strict backend response-contract planning rule for validation, request, payment, and delivery outcomes
+  * Standardized response planning around status_code + message_key + button_set_key + quota_effect + log_type + metadata
+  * Clarified that bot and WebApp must render backend-decided output, not guess UI state locally
+  * Aligned response planning with the dynamic message and button system
 ---
 
 # =========================================================
@@ -760,6 +766,7 @@ Purpose:
   * preserve predictable account ownership
   * reduce support disputes caused by silent account replacement
   * keep recovery/admin actions explicit and traceable
+    
 ### D.2.4 Backend Core Enforcement Order
 Backend must enforce request eligibility in one consistent order:
 
@@ -792,6 +799,57 @@ Purpose:
 - prevent inconsistent rule ordering across endpoints
 - simplify backend and support reasoning
 
+### D.2.4.1 Validation Response Contract Rule
+
+Every entitlement-related decision should produce one structured backend decision object.
+
+Required decision fields:
+
+  * status_code
+  * message_key
+  * button_set_key
+  * quota_effect
+  * log_type
+  * metadata (optional)
+
+Purpose:
+
+  * ensure bot and WebApp render the same outcome
+  * prevent hidden UI-side entitlement logic
+  * make denial/success handling easier to debug, audit, and extend
+
+Rules:
+
+  * backend decides the final outcome
+  * bot and WebApp should render only what backend returns
+  * visible text must come from message_key through the dynamic content system
+  * visible buttons must come from button_set_key through the button system
+  * quota_effect must explicitly state whether quota changed or not
+  * log_type must explicitly classify the audit/event category
+  * metadata should carry only supporting runtime details, not replace stable contract fields
+
+### D.2.4.2 Response Priority and Stability Rule
+
+When multiple denial conditions are possible, backend should return the highest-priority final outcome only.
+
+Priority order:
+
+  1. invalid or missing token / linked access not found
+  2. unusable token status
+  3. total quota exhausted
+  4. daily cap reached
+  5. linked-account limit reached
+  6. validation cooldown blocked
+  7. duplicate request ignored
+  8. delivery failure
+  9. request approved / committed
+
+Stability rules:
+
+  * one decision path should produce one final status_code
+  * business logic must depend on stable status_code, not on visible message wording
+  * wording changes through WebApp must not change backend meaning
+  * new features should define their response contract before implementation planning proceeds
 ---
 
 # =========================================================
@@ -1256,6 +1314,22 @@ Rules:
   * warning, reminder, and support-facing explanatory text should follow the same multilingual content structure
   * wording changes must not change underlying enforcement logic or audit meaning
 
+### D.12.4 Message Rendering Contract
+
+All bot-visible messages should be rendered from backend decision output.
+
+Rendering contract:
+
+  * status_code = enforcement/result meaning
+  * message_key = visible text lookup key
+  * button_set_key = visible action/button layout key
+
+Rules:
+
+  * bot should not assemble its own entitlement meaning from local guesses
+  * WebApp and bot should use the same backend decision contract where relevant
+  * Burmese and English wording should remain editable through the dynamic content system
+  * support/admin investigation should be able to trace a shown user message back to stable status_code and log_type
 ---
 
 # =========================================================
