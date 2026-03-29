@@ -249,6 +249,11 @@
 * Added Telegram Stars prices to default plan definitions for consistency with Phase-1 payment rules
 * Added explicit behavioral-authority note so Module C.2 implementation ordering stays aligned with Document A
 
+### A.3.31 | 2026-03-29
+- Restored missing C.2.3 Fair Use Protection section
+- Generalized C.14.10 Stars-payment rule to avoid stale response-field wording
+- Corrected C.14.12 plan example so Premium Stars price matches default plan definitions
+
 ---
 
 # =========================================================
@@ -749,10 +754,18 @@ Rules:
   * failed validation cooldown = 5 failed attempts -> 5 minute cooldown
 
 ### C.2.3 Fair Use Protection
- * failed validation does not deduct quota
- * file not found does not deduct quota
- * delivery failure does not deduct quota
- * duplicate ignored does not deduct quota
+Rules:
+- failed token validation must not deduct quota
+- linked-account denial must not deduct quota
+- file-not-found outcomes must not deduct quota
+- duplicate-request suppression must not deduct quota
+- delivery failure must not deduct quota
+- quota deduction is allowed only after confirmed successful delivery and atomic commit
+
+Purpose:
+- preserve fairness for users
+- reduce support disputes
+- keep enforcement behavior aligned with commit-success-only deduction
 
 ### C.2.4 Backend Core Decision Engine
 
@@ -4091,8 +4104,7 @@ Success example:
 ```
 
 Rules:
-
-* standard plans should not include normal `expires_at` in response
+* standard plans should not include normal expiry metadata in response
 * plaintext token delivery should occur through the bot delivery flow, not be stored long-term
 
 ### C.14.11 Manual Payment API
@@ -4238,7 +4250,7 @@ Plan response example:
     "plan_id": "pln_01J...",
     "code": "PREMIUM",
     "price_mmk": 20000,
-    "price_stars": 2000,
+    "price_stars": 250,
     "total_quota": 200,
     "daily_cap": 20,
     "duration_days": null,
