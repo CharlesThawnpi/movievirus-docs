@@ -159,6 +159,12 @@ Purpose:
   * Locked admin behavior: no automatic refund, manual quota restore with audit
   * Defined user-visibility rule for admin actions (silent by default)
   * Planned admin action revert/undo system for Phase 2
+
+### A.4.15 | 2026-03-29
+* Expanded WebApp-first management rule beyond user-facing text into broader adjustable product controls
+* Clarified that plans, prices, payment instructions, button labels, reminders, and normal operational settings should be WebApp-managed where safe
+* Added explicit no-hardcode preference for adjustable business and UX settings
+* Preserved code/environment ownership for secrets, infrastructure credentials, schema, and critical security/enforcement logic
 ---
 
 # =========================================================
@@ -427,6 +433,32 @@ When migrating from a live legacy MovieVirus VPS to a new VPS, treat the old VPS
   - delivery interface
   - validation entry point
 - All enforcement logic must be validated against backend/database, not Telegram session state.
+
+Expanded WebApp-first rule:
+- As a default planning preference, any business setting, UX wording, payment-facing instruction, or adjustable operational value that may reasonably need future change should be manageable through WebApp-backed configuration or database records, not hardcoded in scripts.
+- Prefer WebApp-managed control for:
+  - plan definitions and pricing
+  - total quota, daily cap, and max linked-account values per plan
+  - Telegram Stars price values where used
+  - payment instructions and support text
+  - message templates, menu labels, button labels, reminders, warnings, and notification text
+  - button ordering and active/inactive state
+  - normal operational settings such as duplicate window, retry limits, cooldown duration, reminder thresholds, and maintenance messaging where safe
+
+Do not move these into normal WebApp-editable settings:
+- bot tokens
+- API secrets
+- database credentials
+- hashing/cryptographic implementation details
+- schema structure and migrations
+- atomic transaction behavior
+- core enforcement order
+- irreversible security controls
+
+Purpose:
+- reduce hardcoded script edits for routine business changes
+- make non-technical administration practical through WebApp
+- preserve security by keeping secrets and critical enforcement in code/environment
 
 ### B.14 Linked Account Limit Handling
 
