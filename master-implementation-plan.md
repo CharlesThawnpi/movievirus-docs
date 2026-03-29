@@ -206,6 +206,12 @@
   * Added failed validation lock rule: 5 failed attempts -> 5 minute cooldown
   * Confirmed Telegram Stars auto activation
   * Confirmed admin quota restore is allowed with dedicated audit logging
+
+### A.3.25 | 2026-03-29
+  * Added strict decision-response contract for entitlement-related backend outcomes
+  * Expanded state-to-UX mapping from message/button only into full status/message/button/quota/log contract
+  * Standardized API response planning so bot and WebApp render backend-decided results only
+  * Improved audit/debug consistency for validation, request, payment, and delivery flows
 ---
 
 # =========================================================
@@ -932,141 +938,236 @@ Use:
 - Allowed Accounts
 - Device Slots
 
-### C.3.3 State → UX Mapping (Message + Button Binding)
-All backend states must deterministically map to:
-- message_key
-- button_set_key
+### C.3.3 State → UX Mapping (Response Contract Binding)
+
+All backend states must deterministically map to one stable decision contract.
 
 This mapping must be centralized and consistent across all endpoints.
 
----
+* * *
 
 #### Core Mapping Structure
+
 Each system state must define:
 
 STATE:
-- internal backend status
+
+  * internal backend state
 
 OUTPUT:
-- message_key
-- button_set_key
 
----
+  * status_code
+  * message_key
+  * button_set_key
+  * quota_effect
+  * log_type
+
+Optional:
+
+  * metadata
+
+* * *
 
 #### Mapping Table (Phase 1)
 
 ##### 1. ACCESS / TOKEN
+
 STATE: token_required
-→ message_key: ASK_TOKEN
-→ button_set: TOKEN_ENTRY
+  * status_code: TOKEN_REQUIRED
+  * message_key: ASK_TOKEN
+  * button_set_key: TOKEN_ENTRY
+  * quota_effect: none
+  * log_type: validation_prompt
 
 STATE: token_invalid
-→ message_key: TOKEN_INVALID
-→ button_set: TOKEN_RETRY
+  * status_code: INVALID_TOKEN
+  * message_key: TOKEN_INVALID
+  * button_set_key: TOKEN_RETRY
+  * quota_effect: none
+  * log_type: validation_denied
 
 STATE: token_linked_success
-→ message_key: TOKEN_LINKED_SUCCESS
-→ button_set: MAIN_MENU
+  * status_code: TOKEN_LINKED_SUCCESS
+  * message_key: TOKEN_LINKED_SUCCESS
+  * button_set_key: MAIN_MENU
+  * quota_effect: none
+  * log_type: linked_account_added
 
----
+* * *
 
 ##### 2. PLAN / ACCESS CONTROL
+
 STATE: no_active_plan
-→ message_key: NO_ACTIVE_PLAN
-→ button_set: PLAN_PURCHASE
+  * status_code: NO_ACTIVE_PLAN
+  * message_key: NO_ACTIVE_PLAN
+  * button_set_key: PLAN_PURCHASE
+  * quota_effect: none
+  * log_type: validation_denied
 
 STATE: quota_exhausted
-→ message_key: QUOTA_EXCEEDED_WITH_ACTION
-→ button_set: PLAN_ACTIONS
+  * status_code: TOKEN_EXHAUSTED
+  * message_key: QUOTA_EXCEEDED_WITH_ACTION
+  * button_set_key: PLAN_ACTIONS
+  * quota_effect: none
+  * log_type: validation_denied
 
 STATE: daily_limit_reached
-→ message_key: DAILY_LIMIT_REACHED
-→ button_set: PLAN_ACTIONS
+  * status_code: TOKEN_DAILY_CAP_REACHED
+  * message_key: DAILY_LIMIT_REACHED
+  * button_set_key: PLAN_ACTIONS
+  * quota_effect: none
+  * log_type: validation_denied
 
----
+STATE: linked_account_limit_reached
+  * status_code: LINKED_ACCOUNT_LIMIT_REACHED
+  * message_key: LINKED_ACCOUNT_LIMIT_REACHED
+  * button_set_key: HELP
+  * quota_effect: none
+  * log_type: validation_denied
+
+STATE: validation_cooldown_blocked
+  * status_code: VALIDATION_COOLDOWN_BLOCKED
+  * message_key: VALIDATION_COOLDOWN_BLOCKED
+  * button_set_key: HELP
+  * quota_effect: none
+  * log_type: validation_blocked
+
+* * *
 
 ##### 3. REMINDERS
+
 STATE: quota_5_left
-→ message_key: REMINDER_5_LEFT
-→ button_set: PLAN_ACTIONS
+  * status_code: QUOTA_REMINDER_5_LEFT
+  * message_key: REMINDER_5_LEFT
+  * button_set_key: PLAN_ACTIONS
+  * quota_effect: none
+  * log_type: reminder_sent
 
 STATE: quota_1_left
-→ message_key: REMINDER_1_LEFT
-→ button_set: PLAN_ACTIONS
+  * status_code: QUOTA_REMINDER_1_LEFT
+  * message_key: REMINDER_1_LEFT
+  * button_set_key: PLAN_ACTIONS
+  * quota_effect: none
+  * log_type: reminder_sent
 
 STATE: quota_0_left
-→ message_key: REMINDER_0_LEFT
-→ button_set: PLAN_PURCHASE
+  * status_code: TOKEN_EXHAUSTED
+  * message_key: REMINDER_0_LEFT
+  * button_set_key: PLAN_PURCHASE
+  * quota_effect: none
+  * log_type: reminder_sent
 
----
+* * *
 
 ##### 4. REQUEST FLOW
+
 STATE: request_confirm
-→ message_key: REQUEST_CONFIRM
-→ button_set: REQUEST_CONFIRM
+  * status_code: REQUEST_APPROVED
+  * message_key: REQUEST_CONFIRM
+  * button_set_key: REQUEST_CONFIRM
+  * quota_effect: none
+  * log_type: request_validated
 
 STATE: request_processing
-→ message_key: REQUEST_PROCESSING
-→ button_set: NONE
+  * status_code: REQUEST_PROCESSING
+  * message_key: REQUEST_PROCESSING
+  * button_set_key: NONE
+  * quota_effect: none
+  * log_type: request_processing
 
 STATE: duplicate_ignored
-→ message_key: ERROR_RETRY
-→ button_set: BACK
+  * status_code: DUPLICATE_REQUEST_IGNORED
+  * message_key: ERROR_RETRY
+  * button_set_key: BACK
+  * quota_effect: none
+  * log_type: duplicate_ignored
 
----
+* * *
 
 ##### 5. DELIVERY
+
 STATE: delivery_success
-→ message_key: DOWNLOAD_BUTTON
-→ button_set: DOWNLOAD_ACTION
+  * status_code: REQUEST_COMMITTED
+  * message_key: DOWNLOAD_BUTTON
+  * button_set_key: DOWNLOAD_ACTION
+  * quota_effect: decremented
+  * log_type: delivery_success
 
 STATE: delivery_failed
-→ message_key: DELIVERY_FAILED
-→ button_set: RETRY_ACTION
+  * status_code: REQUEST_FAILURE_RECORDED
+  * message_key: DELIVERY_FAILED
+  * button_set_key: RETRY_ACTION
+  * quota_effect: none
+  * log_type: delivery_failed
 
----
+* * *
 
 ##### 6. PAYMENT
+
 STATE: plan_select
-→ message_key: PLAN_SELECT
-→ button_set: PLAN_LIST
+  * status_code: PLAN_SELECTION_READY
+  * message_key: PLAN_SELECT
+  * button_set_key: PLAN_LIST
+  * quota_effect: none
+  * log_type: payment_flow
 
 STATE: payment_submitted
-→ message_key: PAYMENT_SUBMITTED
-→ button_set: NONE
+  * status_code: PAYMENT_SUBMITTED
+  * message_key: PAYMENT_SUBMITTED
+  * button_set_key: NONE
+  * quota_effect: none
+  * log_type: payment_submitted
 
 STATE: payment_approved
-→ message_key: PAYMENT_APPROVED
-→ button_set: MAIN_MENU
+  * status_code: PAYMENT_APPROVED_TOKEN_CREATED
+  * message_key: PAYMENT_APPROVED
+  * button_set_key: MAIN_MENU
+  * quota_effect: none
+  * log_type: payment_approved
 
 STATE: payment_rejected
-→ message_key: PAYMENT_REJECTED
-→ button_set: PLAN_PURCHASE
+  * status_code: PAYMENT_REJECTED
+  * message_key: PAYMENT_REJECTED
+  * button_set_key: PLAN_PURCHASE
+  * quota_effect: none
+  * log_type: payment_rejected
 
----
+* * *
 
 ##### 7. STATUS / TRANSPARENCY
+
 STATE: view_plan
-→ message_key: CURRENT_PLAN
-→ button_set: PLAN_ACTIONS
+  * status_code: VIEW_PLAN
+  * message_key: CURRENT_PLAN
+  * button_set_key: PLAN_ACTIONS
+  * quota_effect: none
+  * log_type: transparency_view
 
 STATE: view_usage
-→ message_key: STATUS_HISTORY
-→ button_set: BACK
+  * status_code: VIEW_USAGE
+  * message_key: STATUS_HISTORY
+  * button_set_key: BACK
+  * quota_effect: none
+  * log_type: transparency_view
 
----
+* * *
 
 #### Rules
-- every state MUST map to exactly one message_key
-- every state MUST map to one button_set (or NONE)
-- no conditional UI logic should exist outside backend
-- frontend (bot) must only render what backend returns
+
+  * every state MUST map to exactly one status_code
+  * every state MUST map to exactly one message_key
+  * every state MUST map to one button_set_key (or NONE)
+  * every state MUST explicitly define quota_effect
+  * every state MUST explicitly define log_type
+  * no conditional entitlement UI logic should exist outside backend
+  * frontend (bot) must only render what backend returns
 
 Purpose:
-- eliminate UI inconsistency
-- ensure predictable behavior
-- simplify debugging and support
 
+  * eliminate UI inconsistency
+  * ensure predictable behavior
+  * standardize auditing and support interpretation
+  * simplify debugging and future API expansion
 ### C.3.4 Same Person Policy
 Do not try to prove same-human identity. Enforce slot policy only.
 
@@ -1178,76 +1279,6 @@ Rules:
 ## C.6 Module 06: Reporting, History, and Audit
 
 ### C.6.1 Admin Reporting
-
------
-Rule 1. Always evaluate every request against both documents:
-A = behavior/planning brain
-https://github.com/CharlesThawnpi/movievirus-docs/blob/main/master-instruction-source.md
-B = implementation blueprint
-https://github.com/CharlesThawnpi/movievirus-docs/blob/main/master-implementation-plan.md
-Rule 2. First decide: is the request clear or needs clarification? Only ask questions if ambiguity affects core logic (plans, quota, linked accounts, payments, architecture).
-Rule 3. If clear, proceed immediately with updates; do not delay unnecessarily.
-Rule 4. Before updating, identify exact affected areas (sections, modules, features, phases, dependencies, risks, queues, or compiled outputs).
-Rule 5. Update only what is necessary; preserve structure, numbering, and stable IDs. Add new IDs only in correct sequence.
-Rule 6. All updates must:
-- reference real existing headings or IDs (e.g., CR-01, M02-F01)
-- use clear anchors (replace / insert below / insert above)
-- never invent section names
-Rule 7. Always return paste-ready updates and clearly state whether A, B, or both are affected.
-Rule 8. Keep A and B aligned whenever shared logic changes, and update changelog for any meaningful structural or logic change.
-Rule 9. Maintain consistency with the MovieVirus core model:
-- plan-based system
-- total quota + daily cap + max linked accounts
-- controlled sharing
-- token as subscription entitlement  
-Do not introduce conflicting models unless explicitly requested.
-Rule 10. Structure responses clearly:
-- clarification (if needed)
-- affected sections
-- paste-ready updates
-- optional implementation advice  
-If no update is needed, explicitly say so.
-Rule 11. Prefer modular structure (Core Rules, Modules, Features, Phases, Dependencies, Risks, Queue) and include impacts (business logic, workflow, DB, admin, user, payment, audit, security).
-Rule 12. Stay phase-appropriate:
-- planning stage → no code unless asked
-- avoid overengineering
-- prioritize minimal disruption and forward compatibility
-Rule 13. End every meaningful response with a summary:
-- affected documents
-- affected sections
-- changelog/version status
-- clarification status
-Rule 14. Before generating any implementation-level design (e.g., DB schema, API, workflow logic, enforcement rules), always check for missing, ambiguous, or assumption-sensitive decisions. If one or more critical decisions are unclear, ask concise clarification questions first and wait for confirmation before proceeding. Do NOT assume or auto-decide values that affect core behavior such as token logic, quota enforcement, linked-account rules, expiry, payment flow, or security.
------
-
-Now I need you to plan on the master plan (to generate for me and I'll copy paste to related parts or section but you have to mentioned exactly each numbering system. For example:
-replace "### A.5.1 Implementation Planning Principle"
-with this "### A.5.1 Implementation Planning Principle for MovieVirus Project"
-or
-Add "### A.5.2 Implementation Planning Principle for MovieVirus Project" under "### A.5.1 Implementation Planning Principle"
-...  something like that...) for when implementing something or anything, all files and folder creation on the vps must be standardize files and folders sturcture and not messing up.
-
-This is clear and does not require clarification because it’s an implementation-governance rule (structure standardization), not affecting core business logic (plans, quota, tokens, accounts).
-
-This belongs primarily to B = Master Implementation Plan, but we will also lightly anchor behavior in A = Master Instruction Source to enforce consistency during future planning.
-
-✅ AFFECTED SECTIONS
-Document B (Implementation Plan)
-Likely under:
-
-Implementation Principles / Architecture / Dev Guidelines section
-
-Document A (Instruction Source)
-Add a rule to ensure GPT always enforces structured file systems
-
-🔧 PASTE-READY UPDATES
-📘 DOCUMENT B — Master Implementation Plan
-✅ 1. ADD NEW SECTION
-Find section:
-### A.5 Implementation Planning Principle
-
-➤ INSERT BELOW:
-### A.5.2 File & Folder Structure Standardization (VPS + Codebase)
 
 Purpose:
 Ensure all MovieVirus deployments (VPS + codebase) follow a consistent, scalable, and maintainable structure to prevent disorder, debugging difficulty, and deployment risk.
@@ -1411,524 +1442,8 @@ Future Additions:
 📘 DOCUMENT A — Master Instruction Source
 We add enforcement so GPT always respects this structure when generating implementation guidance
 
-✅ 2. ADD NEW RULE
-Find section:
-Core Rules (or closest equivalent rule list)
 
-➤ INSERT NEW RULE (next available ID):
-CR-XX: File & Folder Structure Enforcement
 
-When generating any implementation, architecture, or VPS-related guidance:
-
-- MUST follow the standardized MovieVirus file/folder structure defined in Implementation Plan (A.5.2)
-- MUST NOT suggest ad-hoc or unstructured file placement
-- MUST map every new module or feature to a predefined directory
-- MUST explicitly state where new files belong when relevant
-
-Purpose:
-- Maintain consistency between planning and implementation
-- Prevent messy deployments and technical debt accumulation
-🧠 OPTIONAL IMPLEMENTATION ADVICE (Important)
-When you start coding or using VS Code prompts later, always:
-
-Force structure first
-
-Before writing code → define folder placement
-
-Use this pattern in prompts
-
-“Create files inside /services/token/”
-
-“Add handler in /bot/handlers/request_handler.py”
-
-Never allow
-
-random .py or .js files in root
-
-mixing bot logic with business logic
-
-Future upgrade ready:
-
-This structure can evolve into:
-
-microservices
-
-Docker containers
-
-horizontal scaling
-
-✅ SUMMARY
-Affected Documents:
-✅ B (Master Implementation Plan)
-
-✅ A (Master Instruction Source)
-
-Affected Sections:
-B: A.5 Implementation Planning Principle → added A.5.2
-
-A: Core Rules → added CR-XX
-
-Change Type:
-New structural enforcement layer
-
-No breaking changes
-
-Future-proofing improvement
-
-Changelog:
-Added standardized VPS + codebase structure system
-
-Introduced enforcement rule for all future implementations
-
-Clarification Status:
-✅ No clarification needed
-
-
------
-Rule 1. Always evaluate every request against both documents:
-A = behavior/planning brain
-https://github.com/CharlesThawnpi/movievirus-docs/blob/main/master-instruction-source.md
-B = implementation blueprint
-https://github.com/CharlesThawnpi/movievirus-docs/blob/main/master-implementation-plan.md
-Rule 2. First decide: is the request clear or needs clarification? Only ask questions if ambiguity affects core logic (plans, quota, linked accounts, payments, architecture).
-Rule 3. If clear, proceed immediately with updates; do not delay unnecessarily.
-Rule 4. Before updating, identify exact affected areas (sections, modules, features, phases, dependencies, risks, queues, or compiled outputs).
-Rule 5. Update only what is necessary; preserve structure, numbering, and stable IDs. Add new IDs only in correct sequence.
-Rule 6. All updates must:
-- reference real existing headings or IDs (e.g., CR-01, M02-F01)
-- use clear anchors (replace / insert below / insert above)
-- never invent section names
-Rule 7. Always return paste-ready updates and clearly state whether A, B, or both are affected.
-Rule 8. Keep A and B aligned whenever shared logic changes, and update changelog for any meaningful structural or logic change.
-Rule 9. Maintain consistency with the MovieVirus core model:
-- plan-based system
-- total quota + daily cap + max linked accounts
-- controlled sharing
-- token as subscription entitlement  
-Do not introduce conflicting models unless explicitly requested.
-Rule 10. Structure responses clearly:
-- clarification (if needed)
-- affected sections
-- paste-ready updates
-- optional implementation advice  
-If no update is needed, explicitly say so.
-Rule 11. Prefer modular structure (Core Rules, Modules, Features, Phases, Dependencies, Risks, Queue) and include impacts (business logic, workflow, DB, admin, user, payment, audit, security).
-Rule 12. Stay phase-appropriate:
-- planning stage → no code unless asked
-- avoid overengineering
-- prioritize minimal disruption and forward compatibility
-Rule 13. End every meaningful response with a summary:
-- affected documents
-- affected sections
-- changelog/version status
-- clarification status
-Rule 14. Before generating any implementation-level design (e.g., DB schema, API, workflow logic, enforcement rules), always check for missing, ambiguous, or assumption-sensitive decisions. If one or more critical decisions are unclear, ask concise clarification questions first and wait for confirmation before proceeding. Do NOT assume or auto-decide values that affect core behavior such as token logic, quota enforcement, linked-account rules, expiry, payment flow, or security.
------
-
-Now I need you to plan on the master plan to generate for me (based on ##How_to_Generate below samples) for all bot menus, buttons, reminders, notifications, warning, request, any messages or anything between users and bot(s) in English or Burmese must be allowed via web app customizations (I can replace or edit via webapp, not system hardcode).
-
-##How_to_Generate
-You have to generate as shown samples below and I'll copy paste to related parts or section but you have to mentioned exactly each numbering system. For example:
-replace "### A.5.1 Implementation Planning Principle"
-with this "### A.5.1 Implementation Planning Principle for MovieVirus Project"
-or
-Add "### A.5.2 Implementation Planning Principle for MovieVirus Project" under "### A.5.1 Implementation Planning Principle"
-...  something like that.
-
-This is clear and does not require clarification.
-
-This is a UX + system control architecture decision, not affecting core token/quota logic. It fits into:
-
-B (Implementation Plan) → main system design (DB, admin panel, runtime behavior)
-
-A (Instruction Source) → enforcement rule so future planning never hardcodes messages
-
-✅ AFFECTED SECTIONS
-Document B (Implementation Plan)
-Likely under:
-
-Admin System / Config System / UX / Bot Messaging
-
-Document A (Instruction Source)
-Core Rules (to prevent hardcoding in future planning)
-
-🔧 PASTE-READY UPDATES
-📘 DOCUMENT B — Master Implementation Plan
-✅ 1. ADD NEW SECTION
-Find section:
-### M?? Admin Panel / Configuration Module
-(or closest section that handles admin control / settings)
-
-➤ INSERT BELOW:
-### MXX Dynamic Message & UI Content Management System
-
-Purpose:
-Allow all bot-facing content (messages, buttons, menus, notifications, warnings, reminders) to be fully customizable via web app without requiring code changes or redeployment.
-
----
-
-#### MXX-F01 Message Externalization Rule
-
-All user-facing content MUST NOT be hardcoded in the bot or backend.
-
-Includes:
-- Bot messages (success, error, info)
-- Buttons and menu labels
-- Inline keyboard text
-- Notifications (expiry, quota, reminders)
-- Warnings (limit reached, invalid token, etc.)
-- Payment instructions
-- Admin-to-user messages (templates)
-- Multi-step flow messages
-
-All content must be loaded dynamically from database or config service.
-
----
-
-#### MXX-F02 Message Key System (Structured Referencing)
-
-Each message must be referenced using a unique key.
-
-Examples:
-
-- `msg_token_invalid`
-- `msg_quota_exceeded`
-- `msg_daily_limit_reached`
-- `msg_payment_pending`
-- `msg_request_success`
-- `btn_request_file`
-- `btn_upgrade_plan`
-
-Rules:
-- Keys must be stable and never reused for different meanings
-- Keys act as system contract between code and content
-- Code references keys, not actual text
-
----
-
-#### MXX-F03 Multi-Language Support (Burmese-First + English Toggle)
-
-Each message key must support multiple languages:
-
-Structure:
-
-{
-  key: "msg_token_invalid",
-  mm: "Token မမှန်ပါ",
-  en: "Invalid token"
-}
-
-Rules:
-- Burmese (mm) is default
-- English (en) is optional but supported
-- User language preference stored in DB
-- System selects language dynamically
-
----
-
-#### MXX-F04 Admin Web App Editing Interface
-
-Admin must be able to:
-
-- View all message keys
-- Edit Burmese and English content
-- Add new message keys
-- Enable/disable specific messages (future use)
-- Preview messages before saving
-
-Rules:
-- Changes apply instantly (no restart required)
-- Versioning recommended (future phase)
-
----
-
-#### MXX-F05 Button & Menu Configuration
-
-All buttons must also be dynamic:
-
-Examples:
-- Main menu buttons
-- Inline buttons
-- Admin panel buttons
-
-Structure:
-
-{
-  key: "btn_request_file",
-  mm: "ဖိုင်တောင်းရန်",
-  en: "Request File"
-}
-
-Rules:
-- Buttons must not be hardcoded in bot handlers
-- Button layout may be configurable (future phase)
-
----
-
-#### MXX-F06 Message Categories (Logical Grouping)
-
-Messages should be grouped:
-
-- system_messages
-- error_messages
-- success_messages
-- payment_messages
-- request_flow_messages
-- admin_messages
-- notification_messages
-
-Purpose:
-- Easier management in admin panel
-- Cleaner structure
-
----
-
-#### MXX-F07 Notification & Reminder Templates
-
-Templates must exist for:
-
-- Expiry reminders
-- Daily quota reset notification (optional)
-- Payment pending reminder
-- Subscription activated
-- Token revoked
-- Suspicious activity warning
-
-All must be editable via admin panel.
-
----
-
-#### MXX-F08 Runtime Message Loader Service
-
-Introduce a service:
-
-/services/message/
-
-Responsibilities:
-- Fetch message by key
-- Apply language selection
-- Fallback handling (if missing language → fallback to default)
-- Cache frequently used messages
-
----
-
-#### MXX-F09 Fallback & Safety Rules
-
-If message key is missing:
-- Return safe fallback:
-  "System message missing (contact admin)"
-
-If language missing:
-- fallback → Burmese default
-
----
-
-#### MXX-F10 Enforcement Rule
-
-Any new feature MUST:
-- Define required message keys before implementation
-- Register keys in system
-- Use message service instead of hardcoding
-
-Violation:
-- Must be rejected or refactored
-
----
-
-Impact:
-
-Business:
-- Enables fast content changes without deployment
-- Supports localization and future expansion
-
-Technical:
-- Requires message table in DB
-- Requires message service layer
-
-UX:
-- Consistent and easily adjustable messaging
-- Supports Burmese-first strategy
-
-Admin:
-- Full control over user-facing communication
-
-Dependencies:
-- Admin Panel (M??)
-- Database (message table)
-- User language preference system
-
-Risks:
-- RSK-NEW-03: Missing message keys → handled by fallback
-- RSK-NEW-04: Admin misconfiguration → mitigated by preview + validation
-
-Future Additions Queue:
-- Q-NEW-01: A/B testing messages
-- Q-NEW-02: Per-plan custom messages
-- Q-NEW-03: Scheduled message changes
-- Q-NEW-04: Rich formatting (Markdown/HTML safe mode)
-📘 DOCUMENT A — Master Instruction Source
-✅ 2. ADD NEW CORE RULE
-Find section:
-Core Rules
-
-➤ INSERT NEW RULE:
-CR-XX: Dynamic Message System Enforcement
-
-When designing any bot flow, feature, or user interaction:
-
-- MUST NOT hardcode any user-facing message, button, or label
-- MUST define and use message keys (as per Implementation Plan MXX)
-- MUST assume all content is dynamically editable via admin web app
-- MUST include message key planning in feature design
-
-Purpose:
-- Ensure full flexibility and non-breaking content updates
-- Keep UX editable without code changes
-- Maintain consistency across all modules
-🧠 OPTIONAL IMPLEMENTATION ADVICE
-When you move to VS Code / build phase:
-
-Always do this BEFORE coding a feature:
-Define message keys first
-
-Example:
-
-msg_request_start
-
-msg_request_success
-
-msg_request_failed
-
-Then:
-Use:
-message_service.get("msg_request_success", user_lang)
-
-NEVER:
-write "Request successful" inside code
-
-✅ SUMMARY
-Affected Documents:
-✅ B (Master Implementation Plan)
-
-✅ A (Master Instruction Source)
-
-Affected Sections:
-B: Added new module → MXX Dynamic Message & UI Content Management System
-
-A: Added new Core Rule → CR-XX Dynamic Message System Enforcement
-
-Change Type:
-Major UX + system flexibility upgrade
-
-No conflict with core token/quota model
-
-Changelog:
-Introduced fully dynamic message system (DB-driven)
-
-Enabled web app control over all bot content
-
-Enforced no-hardcoding policy
-
-Clarification Status:
-✅ No clarification needed
-
-
------
-Rule 1. Always evaluate every request against both documents:
-A = behavior/planning brain
-https://github.com/CharlesThawnpi/movievirus-docs/blob/main/master-instruction-source.md
-B = implementation blueprint
-https://github.com/CharlesThawnpi/movievirus-docs/blob/main/master-implementation-plan.md
-Rule 2. First decide: is the request clear or needs clarification? Only ask questions if ambiguity affects core logic (plans, quota, linked accounts, payments, architecture).
-Rule 3. If clear, proceed immediately with updates; do not delay unnecessarily.
-Rule 4. Before updating, identify exact affected areas (sections, modules, features, phases, dependencies, risks, queues, or compiled outputs).
-Rule 5. Update only what is necessary; preserve structure, numbering, and stable IDs. Add new IDs only in correct sequence.
-Rule 6. All updates must:
-- reference real existing headings or IDs (e.g., CR-01, M02-F01)
-- use clear anchors (replace / insert below / insert above)
-- never invent section names
-Rule 7. Always return paste-ready updates and clearly state whether A, B, or both are affected.
-Rule 8. Keep A and B aligned whenever shared logic changes, and update changelog for any meaningful structural or logic change.
-Rule 9. Maintain consistency with the MovieVirus core model:
-- plan-based system
-- total quota + daily cap + max linked accounts
-- controlled sharing
-- token as subscription entitlement  
-Do not introduce conflicting models unless explicitly requested.
-Rule 10. Structure responses clearly:
-- clarification (if needed)
-- affected sections
-- paste-ready updates
-- optional implementation advice  
-If no update is needed, explicitly say so.
-Rule 11. Prefer modular structure (Core Rules, Modules, Features, Phases, Dependencies, Risks, Queue) and include impacts (business logic, workflow, DB, admin, user, payment, audit, security).
-Rule 12. Stay phase-appropriate:
-- planning stage → no code unless asked
-- avoid overengineering
-- prioritize minimal disruption and forward compatibility
-Rule 13. End every meaningful response with a summary:
-- affected documents
-- affected sections
-- changelog/version status
-- clarification status
-Rule 14. Before generating any implementation-level design (e.g., DB schema, API, workflow logic, enforcement rules), always check for missing, ambiguous, or assumption-sensitive decisions. If one or more critical decisions are unclear, ask concise clarification questions first and wait for confirmation before proceeding. Do NOT assume or auto-decide values that affect core behavior such as token logic, quota enforcement, linked-account rules, expiry, payment flow, or security.
------
-
-Now I need you to plan on the master plan to generate for me (based on ##How_to_Generate below samples) for all bot menus, buttons, reminders, notifications, warning, request, any messages or anything between users and bot(s) in English or Burmese must be allowed via web app customizations (I can replace or edit via webapp, not system hardcode).
-
-##How_to_Generate
-You have to generate as shown samples below and I'll copy paste to related parts or section but you have to mentioned exactly each numbering system. For example:
-replace "### A.5.1 Implementation Planning Principle"
-with this "### A.5.1 Implementation Planning Principle for MovieVirus Project"
-or
-Add "### A.5.2 Implementation Planning Principle for MovieVirus Project" under "### A.5.1 Implementation Planning Principle"
-...  something like that.
-Note (IMPORTANT): Before you generate, review Rule 1 of 2 documents properly and generate the plan based on both document and mention me what to update or add. Do not imagine and do not use something like "Find section:
-### M?? Admin Panel / Configuration Module". Do not let me find any section, you properly review and find it and mention exactly what to edit, what to removed, what to update, what to add, ... exactly.
-
-
-Thought for 1m 10s
-No clarification is needed. This is a clear shared UX/content-control architecture change and should be reflected in both the planning brain and the implementation blueprint. The current docs already contain a multilingual/content-key foundation in A: D.8 / B: C.8, existing admin-control areas in A: D.9 / B: C.9, and an existing dynamic-config data model in B: C.10.16–C.10.17, so the cleanest update is to strengthen and align those exact places instead of inventing a new detached module. 
-
-Affected sections
-Document A — Master Instruction Source
-
-## A.4 Change Log
-
-### D.8.3 Content Storage Rule
-
-### D.9.3 Review and Recovery Controls
-
-### D.12.2 Admin Alerts 
-
-Document B — Master Implementation Plan
-
-## A.3 Change Log
-
-### C.8.2 Content Storage Rule
-
-### C.9.5 WebApp Admin System Scope
-
-### C.9.15 Media Library Management Screen
-
-### C.10.16 Button Configuration (Future WebApp Control)
-
-### C.10.17 Admin Configuration Data Model
-
-### C.12.3 Admin WebApp Alerts
-
-### C.14.13 Notifications and Status Message Contract 
-
-Paste-ready updates
-DOCUMENT A — Master Instruction Source
-1) Add changelog entry
-Add ### A.4.10 | 2026-03-29 under ### A.4.9 | 2026-03-29
-
-### A.4.10 | 2026-03-29
-
-  * Strengthened multilingual content planning so all bot-facing text, menus, buttons, reminders, warnings, and notifications are treated as dynamic WebApp-managed content
-  * Added explicit no-hardcode rule for user-facing bot/UI content
-  * Aligned admin controls and notification planning with WebApp-based content customization
 2) Replace the existing section
 Replace ### D.8.3 Content Storage Rule with:
 
@@ -1999,6 +1514,7 @@ Rules:
   * content changes should not require code deployment
   * visible text should not be treated as hardcoded business logic
   * critical system meaning should remain attached to stable keys/status codes even if wording changes
+    
 5) Add new subsection
 Add ### D.12.3 Dynamic Message Delivery Rule under ### D.12.2 Admin Alerts
 
@@ -2013,15 +1529,7 @@ Rules:
   * warning, reminder, and support-facing explanatory text should follow the same multilingual content structure
   * wording changes must not change underlying enforcement logic or audit meaning
 DOCUMENT B — Master Implementation Plan
-6) Add changelog entry
-Add ### A.3.25 | 2026-03-29 under ### A.3.24 | 2026-03-29
 
-### A.3.25 | 2026-03-29
-
-  * Promoted all bot-facing content control to WebApp-managed dynamic content instead of system hardcoding
-  * Expanded multilingual/content-layer rules to cover menus, buttons, reminders, notifications, warnings, and request-flow text
-  * Upgraded admin scope to include content/localization management
-  * Updated configuration/data-model sections so editable content is treated as an active implementation requirement rather than future-only customization
 7) Replace the existing section
 Replace ### C.8.2 Content Storage Rule with:
 
@@ -2076,6 +1584,7 @@ Rules:
   * content system owns visible wording
   * business logic must not depend on exact visible sentence text
   * audit and status contracts must remain tied to stable codes/keys
+    
 9) Update admin scope
 Replace the bullet list under ### C.9.5 WebApp Admin System Scope with this version:
 
@@ -2093,7 +1602,6 @@ Phase 1 WebApp scope:
   * media catalog management
   * content/localization management
 10) Add new admin screen
-Add ### C.9.16 Content and Localization Management Screen under ### C.9.15 Media Library Management Screen
 
 ### C.9.16 Content and Localization Management Screen
 
@@ -2138,8 +1646,8 @@ Purpose:
   * reduce hardcoded text debt
   * support Burmese-first operation with English toggle
   * allow faster support and product iteration
+    
 11) Promote button customization from future-only to active requirement
-Replace ### C.10.16 Button Configuration (Future WebApp Control) with:
 
 ### C.10.16 Button Configuration (WebApp-Controlled)
 
@@ -2396,276 +1904,6 @@ Affected sections: A.4, D.8.3, new D.8.4, new D.9.4, new D.12.3, and B.A.3, C.8.
 
 Changelog/version status: add A.4.10 in the Master Instruction Source and A.3.25 in the Master Implementation Plan. The version numbers can remain unchanged unless you want to bump them manually in a separate pass. 
 
-Clarification status: not needed.
-
-
-what's next?
-
-Good — you’ve now locked structure (files/folders) and content system (dynamic messages). That’s a very strong foundation.
-
-Now the next step should NOT be random. We follow dependency order from your system.
-
-🎯 WHAT’S NEXT (CRITICAL PATH)
-At this stage, the correct next move is:
-
-👉 Token Validation + Enforcement Layer (Core Engine)
-Because:
-
-Plans ✅ defined
-
-Quota logic ✅ defined
-
-Linked accounts ✅ defined
-
-Messages ✅ dynamic
-
-Structure ✅ standardized
-
-But…
-
-👉 Nothing works until token validation + enforcement is finalized
-
-🔥 WHY THIS IS NEXT (IMPORTANT)
-Every flow depends on this:
-
-Request File → Ask Token → Validate → Enforce Rules → Allow / Deny
-Without this layer:
-
-quotas aren’t enforced
-
-daily caps don’t work
-
-linked accounts don’t matter
-
-payments have no effect
-
-🧠 WHAT EXACTLY YOU SHOULD PLAN NEXT
-✅ MODULE: Token Validation & Enforcement Engine
-We will define:
-
-1. Validation pipeline (strict order)
-token exists?
-
-token active?
-
-token expired?
-
-quota remaining?
-
-daily cap reached?
-
-linked account allowed?
-
-cooldown / abuse?
-
-2. Decision output (VERY IMPORTANT)
-System must return:
-
-status_code (machine logic)
-
-message_key (for your dynamic system ✅)
-
-button_set (for UI actions ✅)
-
-Example:
-
-STATUS: DAILY_LIMIT_REACHED
-message_key: msg_daily_limit_reached
-button_set: QUOTA_EXCEEDED
-3. Deduction logic
-Only deduct AFTER successful file delivery
-
-Protect against:
-
-duplicate requests
-
-send failures
-
-race conditions
-
-4. Logging & audit
-Must log:
-
-validation attempts
-
-failures (with reason)
-
-successful usage
-
-quota deduction
-
-5. Abuse protection (Phase 1 simple)
-rate limit validation attempts
-
-cooldown after repeated failures
-
-⚠️ BEFORE I GENERATE THIS (IMPORTANT – Rule 14)
-This module affects core behavior, so I MUST confirm a few things before generating exact plan updates.
-
-❓ REQUIRED CLARIFICATIONS
-Answer these before I generate the next paste-ready update:
-
-1. Daily Cap Reset Time
-Which one?
-
-A. Fixed time (e.g., 00:00 server time)
-B. Rolling 24-hour window
-👉 Recommended: A (simpler, predictable)
-
-2. Duplicate Request Protection Window
-If same user requests same file again:
-
-within how many seconds should NOT deduct quota?
-
-👉 Recommended: 60 seconds
-
-3. Linked Account Replacement Policy (Phase 1)
-When max linked accounts reached:
-
-A. Hard block (admin only reset)
-B. Allow replace oldest automatically
-C. Allow user manual replace with confirmation
-
-👉 Recommended: A (simplest for Phase 1)
-
-4. Token Expiry Behavior
-When expired:
-
-A. Hard block immediately
-B. Grace period (e.g., 1–3 days)
-
-👉 Recommended: A (clean + predictable)
-
-5. Validation Failure Lock
-After repeated invalid token attempts:
-
-lock for how long?
-
-👉 Recommended:
-
-5 failed attempts → 5 minute cooldown
-
-🚀 AFTER YOU ANSWER
-I will generate:
-
-✅ Full Token Validation & Enforcement Module
-
-exact sections in A & B
-
-full structure (Mxx, features, rules)
-
-DB impact
-
-workflow
-
-status codes
-
-message key integration (aligned with what we just built)
-
-📊 SUMMARY
-Current Progress:
-✅ Structure standardization
-
-✅ Dynamic content system
-
-✅ Core planning aligned
-
-Next Step:
-👉 Token Validation & Enforcement Engine (CORE SYSTEM)
-
-Blocking:
-⛔ Need your decisions on 5 critical behaviors
-
-Clarification Status:
-⚠️ Required (core logic)
-
-Reply with answers like:
-
-1: A
-2: 60 sec
-3: A
-4: A
-5: 5 attempts / 5 min
-Then I’ll generate the next master-plan update.
-
-
-1. A (but not server time, it is Myanmar Time 6:30+ MMT with 00:00)
-2. 60
-3. A (but not hard block, just show device sharing limit reach, contact to admin...)
-4. Token has no expiry and only quota exceeded or not.
-5. 5 failed attempts → 5 minute cooldown
-
-
-Thought for 33s
-Clarification is complete. Your answers change previously locked Phase 1 decisions, so both documents A and B are affected and the changelogs should be updated.
-
-The main changes are:
-
-daily reset must be 00:00 Asia/Yangon (MMT, UTC+06:30) instead of vague “server time”
-
-linked-account overflow must be deny new linking + show limit reached / contact admin, not auto-replace-oldest
-
-normal tokens still have no time-based expiry
-
-failed token validation must use 5 failed attempts → 5 minute cooldown
-
-duplicate protection remains 60 seconds 
-
-Affected sections
-Document A — Master Instruction Source
-### A.4.9 | 2026-03-29
-
-### B.14 Linked Account Replacement Cooldown
-
-### D.1.1.2 Phase-1 Locked Entitlement Decisions
-
-### D.2.1 Token Validation (Final Behavior)
-
-### D.2.2 Linked Account Handling (Final Behavior)
-
-### D.2.2.1 Locked Daily Cap Rule
-
-### D.2.3.1 Locked Replacement Rule
-
-### D.5.2 Validation Protection
-
-compiled guidance block under the “Linked account logic” bullets near the end of the document 
-
-Document B — Master Implementation Plan
-### A.3.24 | 2026-03-29
-
-### C.1.2 Token Statuses
-
-### C.2.1 Token & Linked Account Validation Engine
-
-### C.6.1 Admin Reporting
-
-### C.7.13 Linked Account Replacement Cooldown
-
-#### Table: token_verification_attempt_logs
-
-#### Locked Daily Cap Scope
-
-### C.14.13 Notifications and Status Message Contract 
-
-Paste-ready updates
-DOCUMENT A — Master Instruction Source
-1) Update changelog entry
-Replace ### A.4.9 | 2026-03-29 with:
-
-### A.4.9 | 2026-03-29
-
-  * Locked final execution-critical decisions for Phase 1
-  * Confirmed daily cap scope as per token + Telegram account
-  * Standardized daily cap reset at 00:00 Asia/Yangon (MMT, UTC+06:30)
-  * Standardized duplicate protection window to 60 seconds
-  * Confirmed linked-account overflow behavior as deny new linking and direct user to admin support
-  * Reconfirmed no expiry for normal plans
-  * Added failed validation protection: 5 failed attempts -> 5 minute cooldown
-  * Confirmed Telegram Stars auto activation
-  * Confirmed admin quota restore is allowed with audit logging
-2) Replace linked-account policy section
-Replace ### B.14 Linked Account Replacement Cooldown with:
 
 ### B.14 Linked Account Limit Handling
 
@@ -2821,23 +2059,7 @@ Linked account logic:
   * if max linked accounts is reached, deny new linking and direct user to contact admin
   * linked-account overflow denial must not consume quota
   * future suggestions may include admin reset, limited self-reset, transfer code flow, and lost-device recovery
-DOCUMENT B — Master Implementation Plan
-10) Update changelog entry
-Replace ### A.3.24 | 2026-03-29 with:
 
-### A.3.24 | 2026-03-29
-
-  * Locked final Phase-1 execution decisions for enforcement-sensitive logic
-  * Confirmed daily cap scope as per token + Telegram account
-  * Standardized daily reset at 00:00 Asia/Yangon (MMT, UTC+06:30)
-  * Standardized duplicate protection window to 60 seconds
-  * Confirmed linked-account overflow policy as deny new linking and direct user to admin
-  * Reconfirmed no expiry for standard plans
-  * Added failed validation lock rule: 5 failed attempts -> 5 minute cooldown
-  * Confirmed Telegram Stars auto activation
-  * Confirmed admin quota restore is allowed with dedicated audit logging
-11) Tighten token statuses wording
-Replace ### C.1.2 Token Statuses with:
 
 ### C.1.2 Token Statuses
 
