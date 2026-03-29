@@ -1491,21 +1491,30 @@ Rules:
 * idempotency and duplicate window must both be enforced server-side
 
 
-### C.7.8 Linked Account Replacement via API
-When new user links and limit is reached:
+### C.7.8 Linked Account Limit Handling via API
+
+When a new user links and the limit is reached:
 
 Backend must:
-- identify oldest linked account (linked_at ASC)
-- mark old account as replaced
-- create new link
 
-Response must include:
-- replacement_flag = true
-- replaced_account_info
+  * deny new linking
+  * preserve all existing linked accounts
+  * write a traceable denial log
+  * return linked-account limit reached response contract fields
+
+Response should include:
+
+  * status_code = LINKED_ACCOUNT_LIMIT_REACHED
+  * message_key = LINKED_ACCOUNT_LIMIT_REACHED
+  * button_set_key = HELP
+  * quota_effect = none
+  * log_type = validation_denied
 
 Bot must:
-- notify new user
-- optionally notify removed user (if reachable)
+
+  * show device-sharing / linked-account limit reached message
+  * direct user to contact admin
+  * not imply that any old account was replaced
 
 ### C.7.9 Retry & Failure Handling
 Bot must:
@@ -1611,22 +1620,19 @@ Flow:
 Admin/API:
 - must return masked token only
 
-### C.7.13 Linked Account Limit Handling
+### C.7.13 Validation Cooldown Rule
+
+Add system setting:
+
+  * validation_cooldown_seconds (default: 300)
 
 Rules:
 
-  * applies per token
-  * if max linked accounts is reached, deny new linking
-  * return user-facing limit-reached response
-  * direct user to contact admin for support/recovery
-  * no quota deduction on denial
-  * no auto-replacement in Phase 1
-
-Purpose:
-
-  * keep device/account sharing controlled
-  * avoid silent displacement of existing linked accounts
-  * simplify Phase 1 support workflow
+  * applies after repeated failed token validation attempts
+  * locked Phase-1 rule = 5 failed attempts -> 5 minute cooldown
+  * cooldown denial must not consume quota
+  * cooldown denial must return clear user-facing message
+  * cooldown events should be logged for audit and abuse review
 
 ---
 
@@ -1688,7 +1694,6 @@ Rules:
   * content system owns visible wording
   * business logic must not depend on exact visible sentence text
   * audit and status contracts must remain tied to stable codes/keys
-
 ---
 
 # =========================================================
@@ -1738,6 +1743,7 @@ Telegram should reflect backend state, not define it.
 The WebApp admin system must be the primary operational control panel for MovieVirus.
 
 Phase 1 WebApp scope:
+
   * dashboard overview
   * plan management
   * token management
@@ -1997,22 +2003,49 @@ Purpose:
   * support Burmese-first operation with English toggle
   * allow faster support and product iteration
 
-### C.9.17 WebApp Permission Model (Phase 1)
-Phase 1 default:
-- single admin account
+### C.9.17 Content and Localization Management Screen
+
+Content / Localization screen must support:
+
+  * list content keys
+  * filter by category
+  * search by key
+  * edit Burmese content
+  * edit English content
+  * edit menu labels
+  * edit button labels
+  * edit notification/reminder text
+  * edit warning/denial text
+  * edit payment instruction text
+  * preview rendered content where practical
+  * activate/deactivate non-critical content entries where appropriate
+  * inspect content change history where available
+
+Recommended categories:
+
+  * system_messages
+  * request_flow_messages
+  * payment_messages
+  * warning_messages
+  * reminder_messages
+  * notification_messages
+  * menu_labels
+  * button_labels
+  * help_and_support_messages
 
 Rules:
-- system may operate with one admin initially
-- backend and UI must still be structured so future role expansion is possible
-- future roles may include:
-  - super_admin
-  - finance_admin
-  - support_admin
-  - reviewer
+
+  * content editing must not bypass stable key usage
+  * content publishing must not require app redeploy for normal text changes
+  * critical enforcement outcomes must remain mapped to backend status codes and message keys
+  * content changes should be auditable
 
 Purpose:
-- keep Phase 1 simple
-- avoid repainting the architecture later
+
+  * centralize UX wording control
+  * reduce hardcoded text debt
+  * support Burmese-first operation with English toggle
+  * allow faster support and product iteration
 
 ### C.9.18 WebApp UI Rules
 UI rules:
@@ -2811,8 +2844,6 @@ Purpose:
     * visibility
     * reusable action definitions
 
-* * *
-
 #### Button Set Logic (Runtime)
 
 Backend should define button sets.
@@ -2829,8 +2860,6 @@ Each set contains:
 
   * ordered list of button types
 
-* * *
-
 #### Example Button Set
 
 QUOTA_EXCEEDED:
@@ -2838,8 +2867,6 @@ QUOTA_EXCEEDED:
   * BUY_PLAN
   * VIEW_PLAN
   * HELP
-
-* * *
 
 Rules:
 
@@ -2852,8 +2879,6 @@ Rules:
 ### C.10.17 Admin Configuration Data Model
 
 System must support dynamic configuration and dynamic content management via WebApp.
-
-* * *
 
 #### 1. message_templates
 
@@ -2875,8 +2900,6 @@ Purpose:
   * support multilingual system
   * allow safe updates without redeploy
 
-* * *
-
 #### 2. button_templates
 
 Fields:
@@ -2895,8 +2918,6 @@ Purpose:
 
   * allow admin to control button labels and behavior
 
-* * *
-
 #### 3. button_sets
 
 Fields:
@@ -2906,8 +2927,6 @@ Fields:
   * description
   * is_active
   * updated_at
-
-* * *
 
 #### 4. button_set_items
 
@@ -2922,8 +2941,6 @@ Fields:
 Purpose:
 
   * define which buttons appear in each context
-
-* * *
 
 #### 5. content_change_logs
 
@@ -2942,8 +2959,6 @@ Purpose:
 
   * preserve auditability for wording changes
   * support rollback/review when content edits cause confusion
-
-* * *
 
 #### 6. plan_definitions
 
@@ -2964,8 +2979,6 @@ Purpose:
 
   * allow admin to change plans without code changes
 
-* * *
-
 #### 7. system_settings
 
 Fields:
@@ -2979,10 +2992,9 @@ Examples:
 
   * duplicate_window_seconds = 60
   * max_delivery_retry = 3
-  * replacement_cooldown_seconds = 600
+  * validation_cooldown_seconds = 300
   * payment_pending_expiry_hours = 48
-
-* * *
+  * daily_reset_timezone = Asia/Yangon
 
 #### 8. admin_audit_logs
 
@@ -3007,6 +3019,7 @@ Rules:
   * all user-facing content used by bot flows should come from this configuration/content layer
   * all wording changes should remain separate from enforcement logic
   * content keys must be stable even if visible wording changes
+
 ---
 
 # =========================================================
@@ -3984,6 +3997,7 @@ Quota adjustment example:
 
 User-facing status codes that bot/UI should map clearly:
 
+  * TOKEN_REQUIRED
   * INVALID_TOKEN
   * TOKEN_SUSPENDED
   * TOKEN_REVOKED
@@ -3999,17 +4013,17 @@ User-facing status codes that bot/UI should map clearly:
   * PAYMENT_APPROVED_TOKEN_CREATED
   * PAYMENT_REJECTED
 
-Optional special-plan-only status:
+Special-plan-only optional status:
 
   * TOKEN_EXPIRED
 
 Rules:
   * all denial reasons must be user-readable
   * send-failure events should notify requester and admin
-  * delivery link expiry/delete timing should be made visible to user
-  * bot/UI should map status codes to stable message keys, not depend on hardcoded visible sentences
-  * final visible wording for status, warning, reminder, and action prompts should come from the dynamic content system
-  * normal standard plans should not surface expiry denial
+  * final visible wording must come from message_key through the dynamic content system
+  * final visible actions must come from button_set_key through the button system
+  * normal standard plans should not emit expiry-based denial during normal operation
+  * bots and WebApp clients must not invent alternate status meaning outside backend contract
 
 ### C.14.14 API Idempotency and Logging Rules
 Rules:
@@ -4021,38 +4035,70 @@ Rules:
 - all delivery failures should write token_usage_logs with zero quota deduction
 
 ### C.14.15 Core Logic Response Rules
+
 All entitlement-related endpoints must return backend-decided state, not UI guesses.
 
-Validation endpoints must return enough structured data to drive both message and button rendering:
+Validation, request, delivery, and payment endpoints should keep the normal API envelope, while returning one strict backend decision object inside `data.decision`.
 
-Required fields where relevant:
-- message_key
-- status_code
-- token_status
-- total_quota_remaining
-- daily_remaining
-- linked_account_action
-- duplicate_flag
-- reminder_trigger
-- button_set_key
+Required decision fields:
+
+  * status_code
+  * message_key
+  * button_set_key
+  * quota_effect
+  * log_type
+  * metadata (optional)
+
+Recommended response shape:
+
+    {
+      "success": true,
+      "code": "REQUEST_COMMITTED",
+      "message": "Backend decision returned.",
+      "data": {
+        "decision": {
+          "status_code": "REQUEST_COMMITTED",
+          "message_key": "DOWNLOAD_BUTTON",
+          "button_set_key": "DOWNLOAD_ACTION",
+          "quota_effect": "decremented",
+          "log_type": "delivery_success",
+          "metadata": {
+            "token_status": "active",
+            "total_quota_remaining": 49,
+            "daily_remaining": 4,
+            "duplicate_flag": false,
+            "linked_account_action": "none",
+            "reminder_trigger": null
+          }
+        }
+      },
+      "meta": {
+        "request_id": "req_01H..."
+      }
+    }
 
 Standard denial priorities:
-1. invalid token / link not found
-2. unusable token status
-3. total quota exhausted
-4. daily cap reached
-5. duplicate ignored
-6. delivery failure
+  1. invalid token / link not found
+  2. unusable token status
+  3. total quota exhausted
+  4. daily cap reached
+  5. linked-account limit reached
+  6. validation cooldown blocked
+  7. duplicate ignored
+  8. delivery failure
 
 Rules:
-- standard plans should not emit expiry-based denial for normal operation
-- quota and sharing state must drive primary UX
-- message and button selection must be derived from backend response data
+
+  * standard plans should not emit expiry-based denial for normal operation
+  * quota and sharing state must drive primary UX
+  * message and button selection must be derived from backend response data
+  * quota_effect must be explicit so clients never guess whether quota changed
+  * log_type must be explicit so support/audit interpretation stays consistent
+  * metadata may enrich rendering and logging, but must not replace stable contract fields
 
 State authority rule:
-
-* only backend services may mutate token status, payment status, linked-account state, quota counters, approved-token linkage, and delivery-session state
-* bots and WebApp clients must request backend decisions and render backend-decided results only
+  * only backend services may mutate token status, payment status, linked-account state, quota counters, approved-token linkage, and delivery-session state
+  * bots and WebApp clients must request backend decisions and render backend-decided results only
 
 ### C.14.16 Button Set Definitions
 Button sets must be predefined and reusable.
