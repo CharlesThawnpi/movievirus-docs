@@ -133,6 +133,12 @@ Purpose:
   * Strengthened multilingual content planning so all bot-facing text, menus, buttons, reminders, warnings, and notifications are treated as dynamic WebApp-managed content
   * Added explicit no-hardcode rule for user-facing bot/UI content
   * Aligned admin controls and notification planning with WebApp-based content customization
+
+### A.4.11 | 2026-03-29
+  * Introduced Validation Response Contract system
+  * Standardized system outputs across backend, bot, and WebApp
+  * Defined required response fields: status_code, message_key, button_set, quota_effect, log_action
+  * Eliminated ambiguity in success/denial handling
 ---
 
 # =========================================================
@@ -1458,7 +1464,7 @@ Response style for MovieVirus work:
 
 Planning structure preference:
 - use Core Rules, Modules, Features, Phases, Dependencies, Risks, Future Additions Queue, and Prompt Source sections where useful
-- prefer stable hierarchical IDs such as D.7.3, D.1, E.1, F.1
+- prefer stable hierarchical IDs such as A.0.1, A.0.2, ..., B.0.1, B.0.2, ..., C.2.0, C.2.1, ..., D.0.1, D.0.2, ...
 - update only the affected sections unless a full rewrite is explicitly requested
 
 Future-proofing:
