@@ -2104,15 +2104,23 @@ UI rules:
 For migration, use PostgreSQL as the target database and do not reuse the legacy SQLite schema directly as the production target design.
 
 ### C.10.4 Migration Mapping Guidance
-Recommended mapping:
-- users -> members
-- daily_usage -> member_daily_usage
-- transactions -> payments
-- delivery_tokens -> access_tokens plus access_token_items when batch payload normalization is required
-- movies and series -> media_assets or retained split media tables depending on final schema decision
-- series_episode_map -> media_episode_map
-- request_events / search_miss / ai_events -> analytics tables
 
+Final decision:
+
+  * unified media model is used
+
+Mapping:
+
+  * movies → media_items (media_type = 'movie')
+  * series → media_items (media_type = 'series')
+  * episodes → episodes table
+
+Purpose:
+
+  * simplify search
+  * enable unified indexing
+  * support future content types
+    
 ### C.10.5 Normalization Rule
 Before import:
 - recompute member status from dates instead of trusting legacy status blindly
@@ -2123,22 +2131,248 @@ Before import:
 - enforce target-side foreign keys and indexes
 
 ### C.10.6 Final Phase-1 PostgreSQL Schema Blueprint
-Use PostgreSQL as the production target database.
 
-Schema design goals:
-- backend/database as source of truth
-- WebApp-driven member/admin management
-- secure token handling
-- controlled sharing via max linked accounts
-- traceable quota, payment, and admin actions
-- migration-safe and audit-friendly structure
+This schema defines the complete Phase 1 database structure for MovieVirus.
 
-Recommended table groups:
-- plan and entitlement tables
-- linked-account and quota enforcement tables
-- payment and review tables
-- audit and support tables
-- optional content/localization tables
+---
+
+#### 1. members
+
+Stores user identity context.
+
+- id (PK)
+- telegram_user_id (unique)
+- username
+- first_name
+- last_name
+- language_preference (mm/en)
+- created_at
+- updated_at
+
+---
+
+#### 2. tokens
+
+Represents subscription entitlement.
+
+- id (PK)
+- token_hash (unique)
+- plan_id (FK)
+- status (active, suspended, revoked, exhausted, pending)
+- total_quota
+- total_quota_remaining
+- daily_cap
+- max_linked_accounts
+- created_at
+- updated_at
+
+---
+
+#### 3. plans
+
+- id (PK)
+- plan_key
+- name
+- price
+- total_quota
+- daily_cap
+- max_linked_accounts
+- is_active
+- created_at
+- updated_at
+
+---
+
+#### 4. linked_accounts
+
+- id (PK)
+- token_id (FK)
+- member_id (FK)
+- linked_at
+- is_active
+
+Rules:
+- max count per token enforced in backend
+- no auto replacement
+
+---
+
+#### 5. daily_usage
+
+- id (PK)
+- token_id (FK)
+- member_id (FK)
+- usage_date (Asia/Yangon)
+- request_count
+
+Constraint:
+- unique(token_id, member_id, usage_date)
+
+---
+
+#### 6. request_logs
+
+Tracks every request lifecycle.
+
+- id (PK)
+- request_id (unique)
+- token_id (FK)
+- member_id (FK)
+- media_item_id (FK)
+- status (validated, processing, success, failed)
+- is_committed (boolean)
+- created_at
+- updated_at
+
+Rules:
+- idempotency based on request_id
+- commit-success updates is_committed=true
+
+---
+
+#### 7. usage_logs
+
+Quota consumption logs.
+
+- id (PK)
+- token_id (FK)
+- member_id (FK)
+- request_id
+- media_item_id
+- quota_used (default 1)
+- created_at
+
+---
+
+#### 8. media_items
+
+Unified media table.
+
+- id (PK)
+- title
+- original_title
+- media_type (movie, series)
+- description
+- release_year
+- country
+- created_at
+
+---
+
+#### 9. episodes
+
+- id (PK)
+- media_item_id (FK)
+- season_number
+- episode_number
+- title
+- created_at
+
+---
+
+#### 10. media_files
+
+- id (PK)
+- media_item_id (FK)
+- episode_id (nullable)
+- file_id (Telegram file_id)
+- quality
+- language
+- created_at
+
+---
+
+#### 11. payments
+
+- id (PK)
+- member_id (FK)
+- method (stars, local)
+- amount
+- status (pending, approved, rejected)
+- screenshot_path
+- ocr_text
+- reviewed_by_admin_id
+- created_at
+- updated_at
+
+---
+
+#### 12. admin_users
+
+- id (PK)
+- username
+- role
+- created_at
+
+---
+
+#### 13. admin_action_logs
+
+- id (PK)
+- admin_id (FK)
+- action_type
+- target_type
+- target_id
+- before_value (JSON)
+- after_value (JSON)
+- reason
+- created_at
+
+---
+
+#### 14. message_templates
+
+- id (PK)
+- key
+- lang (mm/en)
+- category
+- content
+- is_active
+- updated_at
+
+---
+
+#### 15. button_templates
+
+- id (PK)
+- button_key
+- label_key
+- action_type
+- action_payload
+- is_active
+- sort_order
+
+---
+
+#### 16. button_sets
+
+- id (PK)
+- set_key
+- description
+- is_active
+
+---
+
+#### 17. button_set_items
+
+- id (PK)
+- set_id (FK)
+- button_key
+- sort_order
+
+---
+
+#### 18. system_settings
+
+- key (PK)
+- value
+- description
+- updated_at
+
+Examples:
+- duplicate_window_seconds = 60
+- validation_cooldown_seconds = 300
+- daily_reset_timezone = Asia/Yangon
 
 ### C.10.7 Delivery Integrity Rule
 Validate inherited Telegram delivery references before cutover. If delivery depends on source chat/message mapping, sample verification is mandatory before decommissioning the legacy VPS.
@@ -3010,6 +3244,13 @@ Rules:
   * all wording changes should remain separate from enforcement logic
   * content keys must be stable even if visible wording changes
 
+#### 9. members
+
+Used for user identity tracking.
+
+#### 10. admin_users
+
+Used for admin identity tracking and audit reference.
 ---
 
 # =========================================================
