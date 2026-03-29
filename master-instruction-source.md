@@ -145,6 +145,13 @@ Purpose:
   * Standardized response planning around status_code + message_key + button_set_key + quota_effect + log_type + metadata
   * Clarified that bot and WebApp must render backend-decided output, not guess UI state locally
   * Aligned response planning with the dynamic message and button system
+
+### A.4.13 | 2026-03-29
+  * Locked quota deduction timing to post-delivery success only
+  * Added retry-safe delivery handling without additional quota deduction
+  * Added idempotent commit rule to prevent double deduction
+  * Defined partial-success handling (assume success if delivery completed but confirmation uncertain)
+  * Confirmed no automatic quota refund by system; admin-only restoration with audit logging
 ---
 
 # =========================================================
@@ -859,33 +866,35 @@ Stability rules:
 ## D.3 Module 03: Linked Accounts / Device Slots
 
 ### D.3.1 Request Flow (Final)
-Search → Select File → Request File
 
-IF telegram_user_id is linked:
-→ proceed
-ELSE:
-→ ask token → validate → link account (with replacement if needed)
+Flow:
 
-Then:
-→ validate:
-   - token status
-   - total quota
-   - daily cap
-→ process request:
-   - send file (retry up to 3 times if failure)
-→ IF success:
-   - log usage
-   - deduct quota
-→ IF failure after retries:
-   - do NOT deduct quota
-   - notify user
-   - notify admin
+  1. User searches/selects file
+  2. Bot validates entitlement (token + quota + daily cap + linked account + cooldown)
+  3. IF denied:
+     * return response contract (status_code, message_key, button_set_key, etc.)
+     * STOP
+  4. IF approved:
+     * create request record
+     * DO NOT deduct quota yet
+     * return delivery instruction
+  5. Delivery bot sends file
+  6. IF delivery success:
+     * backend receives commit-success
+     * deduct quota (exactly once)
+     * update daily usage
+     * log success
+  7. IF delivery failure:
+     * backend receives commit-failure
+     * DO NOT deduct quota
+     * log failure
+     * allow retry
 
-Duplicate Protection:
-- repeated request within 30–60 seconds must not double deduct quota
-- system should return status message
+Rules:
 
-All denial reasons must be clearly shown to user.
+  * quota must NOT be deducted during validation or request creation
+  * quota must be deducted ONLY after confirmed successful delivery
+  * duplicate requests within safe window must not create additional deduction
 
 ### D.3.1.1 Locked Payment Activation Rule
 
@@ -903,9 +912,35 @@ Purpose:
 * reduce admin workload for trusted platform-native payments
 * preserve fraud control for local manual payment flow
 
-### D.3.2 Same Person Rule
-Do not try to prove two Telegram accounts are the same human. Only enforce token-linked account slot policy.
+### D.3.2 Deduction Rule
 
+Quota deduction must follow strict post-delivery commitment logic.
+
+Rules:
+
+  * deduction trigger = successful file delivery only
+  * validation or request approval must NOT deduct quota
+  * failed delivery must NOT deduct quota
+  * duplicate requests must NOT deduct quota
+  * retry attempts after failure must NOT deduct additional quota
+
+Idempotency:
+
+  * commit-success must be idempotent
+  * repeated commit-success for same request must NOT deduct multiple times
+
+Partial success handling:
+
+  * if file is sent but confirmation is uncertain:
+    * treat as success
+    * deduct quota
+
+Admin recovery:
+
+  * system must NOT auto-refund quota
+  * admin may manually restore quota
+  * all restore actions must be logged
+    
 ### D.3.3 Linked Account Labels
 Use:
 - Linked Accounts
