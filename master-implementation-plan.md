@@ -254,6 +254,12 @@
 - Generalized C.14.10 Stars-payment rule to avoid stale response-field wording
 - Corrected C.14.12 plan example so Premium Stars price matches default plan definitions
 
+### A.3.32 | 2026-03-30
+* Added change-safe architecture guidance for optional features, safe disablement, and future module extensibility
+* Added portability guidance so backup, restore, packaging, and VPS migration remain routine operational paths
+* Expanded admin configuration planning to include feature flags, module registry, and deployment/backup metadata
+* Strengthened system-health, database-strategy, and project-structure rules for migration-safe and change-tolerant implementation
+
 ---
 
 # =========================================================
@@ -1786,6 +1792,11 @@ Rules:
 ### C.9.4 WebApp Management Authority
 The WebApp and backend admin system are the only authoritative places where user/member state is modified.
 
+Change-safe administration note:
+- non-critical optional features should be introduced in a way that allows safe enable/disable control through backend-managed configuration where appropriate
+- admin should be able to hide, disable, or defer incomplete non-core features without breaking entitlement, payment, delivery, or audit flows
+- WebApp-controlled feature states must be validated server-side before activation
+
 WebApp-first adjustment rule:
 - Any setting that is expected to change during normal operation without requiring code logic redesign should be managed through WebApp-backed configuration or database records, not by editing scripts.
 - This includes business-facing, admin-facing, and user-facing adjustable settings where safe.
@@ -3034,46 +3045,77 @@ Examples:
   * validation_cooldown_seconds = 300
   * daily_reset_timezone = Asia/Yangon
 
-#### 8. admin_audit_logs
+#### 8. feature_flags
+Purpose:
+- allow safe enable/disable control for optional or future-facing features without code branching chaos
 
-Fields:
-
-  * id
-  * admin_id
-  * action_type
-  * target_type
-  * target_id
-  * old_value
-  * new_value
-  * created_at
-
-#### 9. members
-
-Used for user identity tracking.
-
-#### 10. admin_users
-
-Used for admin identity tracking and audit reference.
+Minimum examples:
+- enable_quota_reminders
+- enable_stars_payment
+- enable_manual_payment_submission
+- enable_admin_content_preview
+- enable_delivery_delete_after
+- enable_beta_feature_x
 
 Rules:
-- system_settings must not be used to bypass locked core enforcement principles
-- settings must be validated server-side before activation
-- invalid or dangerous values must be rejected and logged
+- feature flags must default to safe behavior
+- disabling a non-critical feature must not break core entitlement flow
+- feature flags must not be used to bypass locked core enforcement rules
 
-Do not store as normal WebApp-editable config:
-- bot tokens
-- API secrets
-- DB credentials
-- hashing/crypto internals
-- schema migration definitions
-- atomic transaction rules
-- core validation order
-- security-critical constants that should remain code-controlled
-
+#### 9. module_registry
 Purpose:
-- reduce hardcoded operational debt
-- support non-programmer administration
-- keep adjustable product behavior under WebApp control while preserving security boundaries
+- track whether a module is active, inactive, hidden, beta, or maintenance-disabled
+
+Minimum examples:
+- payment_manual_review
+- reminders
+- content_preview
+- analytics_dashboard
+- migration_tools
+
+Rules:
+- registry state must be runtime-readable by backend and WebApp
+- inactive or hidden modules should fail gracefully with auditable reason codes
+
+#### 10. deployment_snapshots
+Purpose:
+- record release/deployment metadata that helps rollback, migration, and environment verification
+
+Minimum examples:
+- release_label
+- schema_version
+- config_version
+- deployed_at
+- deployed_by
+- environment_name
+
+#### 11. backup_runs
+Purpose:
+- record backup execution history and verification results
+
+Minimum examples:
+- started_at
+- completed_at
+- backup_type
+- storage_target
+- verification_status
+- initiated_by
+
+#### 12. restore_runs
+Purpose:
+- record restore tests or real recovery operations for audit and disaster-recovery readiness
+
+Minimum examples:
+- started_at
+- completed_at
+- restore_target
+- source_backup_id
+- verification_status
+- initiated_by
+
+Additional rules:
+- backup and restore history should be visible in admin audit/reporting tools
+- export/import and migration readiness should be treated as normal system capability, not emergency-only work
 ---
 
 # =========================================================
@@ -5075,40 +5117,45 @@ Purpose:
 * dispute resolution
 
 ### C.15.7 System Health State
-
 System must support:
-
 * normal
 * degraded
 * maintenance
 
 Usage:
-
 * bot changes behavior based on state
 * admin dashboard displays status
 * backend should fail closed for entitlement-sensitive operations when required state cannot be trusted
 
-Purpose:
+Change-safe behavior:
+* non-critical module failure should prefer degraded mode over full system collapse where possible
+* disabled optional features should return stable backend decisions instead of causing runtime crashes
+* maintenance or disabled-module states should remain visible and auditable in admin tools
 
+Purpose:
 * graceful degradation
 * clearer user messaging
-
+* safer operation during partial outages, feature disablement, or staged rollout
 ### C.15.8 Database Access Strategy
-
 Use:
-
 * Knex for queries/migrations
 * raw SQL for critical transactions
 
 Avoid:
-
 * relying solely on ORM abstractions for atomic quota deduction, commit handling, or concurrency-sensitive operations
 
 Rules:
-
 * request commit-success should be a DB transaction
 * quota decrement + usage log + daily counter update must succeed or roll back together
 * audit-critical writes should not be fire-and-forget
+* schema changes should prefer additive, backward-compatible rollout where practical
+* optional feature data structures should not destabilize core entitlement tables
+* migration/export/import workflows should be supportable without redesigning database ownership boundaries
+
+Purpose:
+* preserve correctness
+* reduce migration risk
+* support safer iteration and VPS portability
 
 ### C.15.9 Admin Auth Security
 
@@ -5153,42 +5200,48 @@ Rules:
 
 ### C.16.2 Project Structure
 Recommended structure:
+
 ```text
 /movievirus/
   /app
-  /api
-    /routes
-    /controllers
-    /schemas
-  /services
-    /auth
-    /token
-    /quota
-    /linked_accounts
-    /request
-    /delivery
-    /payment
-    /admin
-    /search
-    /content
-    /config_runtime
-  /database
-    /migrations
-    /seeds
-    /queries
-  /bot
-    /handlers
-    /flows
-    /middlewares
-    /keyboards
-    /messages
-    /routers
-  /config
-  /scripts
-  /logs
-  /storage
-  /backups
-  /tests
+    /api
+      /routes
+      /controllers
+      /schemas
+      /services
+        /auth
+        /token
+        /quota
+        /linked_accounts
+        /request
+        /delivery
+        /payment
+        /admin
+        /search
+        /content
+        /config_runtime
+        /feature_flags
+        /module_registry
+        /backup_restore
+    /database
+      /migrations
+      /seeds
+      /queries
+    /bot
+      /handlers
+      /flows
+      /middlewares
+      /keyboards
+      /messages
+      /routers
+    /config
+    /scripts
+    /logs
+    /storage
+    /backups
+    /exports
+    /imports
+    /tests
   main_entry/
 ````
 
