@@ -471,6 +471,19 @@ Purpose:
 - Maintain consistency between planning and implementation
 - Prevent messy deployments and technical debt accumulation
 
+### B.16 File & Folder Structure Enforcement
+When generating any implementation, architecture, or VPS-related guidance:
+
+- MUST follow standardized MovieVirus file/folder structure defined in Implementation Plan
+- MUST NOT suggest ad-hoc or unstructured file placement
+- MUST map every new module or feature to predefined directory
+- MUST explicitly state file placement when relevant
+
+Purpose:
+- maintain consistency
+- prevent messy deployments
+- align planning with implementation
+
 ---
 
 # =========================================================
@@ -738,7 +751,7 @@ Purpose:
   * prevent silent account displacement
   * keep recovery/admin support manageable in Phase 1
 
-### D.2.2.1 Locked Daily Cap Rule
+### D.2.2.2 Locked Daily Cap Rule
 
 Daily cap must be enforced per:
 
@@ -940,16 +953,6 @@ Admin recovery:
   * system must NOT auto-refund quota
   * admin may manually restore quota
   * all restore actions must be logged
-    
-### D.3.3 Linked Account Labels
-Use:
-- Linked Accounts
-- Allowed Accounts
-- Device Slots
-
-Do not use:
-- same person verification
-- hardware fingerprint language
 
 ### D.3.2.1 Locked Admin Approval and Restore Rule
 
@@ -970,6 +973,17 @@ Purpose:
 * preserve fairness
 * support dispute resolution
 * maintain full traceability
+    
+### D.3.3 Linked Account Labels
+Use:
+- Linked Accounts
+- Allowed Accounts
+- Device Slots
+
+Do not use:
+- same person verification
+- hardware fingerprint language
+
 ---
 
 # =========================================================
@@ -1224,6 +1238,80 @@ Planning rule:
 - reset linked accounts
 - perform manual overrides with logs
 
+### D.9.3.1 Locked Admin Approval and Restore Rule
+
+Admin is allowed to:
+
+* approve or reject local manual payments
+* manually restore quota when justified
+* manually adjust token state when needed for support recovery
+
+Rules:
+
+* quota restore must be logged separately from normal file usage
+* quota restore reason and acting admin must be recorded
+* restore actions must not overwrite prior usage history
+
+### D.9.3.2 Admin Action Audit Rule
+
+Every admin action MUST log:
+
+- admin_id
+- action_type
+- target_type
+- target_id
+- before_state
+- after_state
+- reason
+- timestamp
+
+Rules:
+
+- no silent overwrite
+- must be queryable in admin panel
+
+### D.9.3.3 Admin Action Visibility Rule Phase 1:
+- admin actions are NOT automatically notified to users
+- users may observe effects (quota change, etc.)
+- no forced push notifications
+  
+ Purpose:
+    - reduce confusion
+    - allow controlled support flow
+
+### D.9.3.4 Token Control Rule
+Admin may:
+- suspend token
+- reactivate token
+- revoke token
+Rules:
+- suspended = temporary block
+- revoked = permanent
+- must apply immediately in validation
+- must be logged
+
+### D.9.3.5 Linked Account Reset Rule
+
+Admin may:
+
+- remove one linked account
+- remove all linked accounts
+
+Rules:
+
+- no quota impact
+- must log removed accounts
+- must not auto-replace
+
+### D.9.3.6 Future: Admin Undo System
+
+Planned for Phase 2:
+
+- reversible admin actions
+- rollback support
+
+Not required in Phase 1
+
 ### D.9.4 Content and Localization Management
 
 Admin controls should also include WebApp-based content management for all user-facing bot/UI text.
@@ -1355,22 +1443,6 @@ Rules:
   * Burmese and English wording should remain editable through the dynamic content system
   * support/admin investigation should be able to trace a shown user message back to stable status_code and log_type
 
-### D.12.4 Message Rendering Contract
-
-All bot-visible messages should be rendered from backend decision output.
-
-Rendering contract:
-
-  * status_code = enforcement/result meaning
-  * message_key = visible text lookup key
-  * button_set_key = visible action/button layout key
-
-Rules:
-
-  * bot should not assemble its own entitlement meaning from local guesses
-  * WebApp and bot should use the same backend decision contract where relevant
-  * Burmese and English wording should remain editable through the dynamic content system
-  * support/admin investigation should be able to trace a shown user message back to stable status_code and log_type
 ---
 
 # =========================================================
