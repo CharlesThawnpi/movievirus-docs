@@ -127,6 +127,11 @@ Purpose:
 * Reconfirmed no expiry for normal plans
 * Confirmed Telegram Stars auto activation
 * Confirmed admin quota restore is allowed with audit logging
+
+### A.4.10 | 2026-03-29
+  * Strengthened multilingual content planning so all bot-facing text, menus, buttons, reminders, warnings, and notifications are treated as dynamic WebApp-managed content
+  * Added explicit no-hardcode rule for user-facing bot/UI content
+  * Aligned admin controls and notification planning with WebApp-based content customization
 ---
 
 # =========================================================
@@ -1050,7 +1055,45 @@ Prefer Burmese-first UI with English toggle.
 - better future scalability
 
 ### D.8.3 Content Storage Rule
-Store message content by message key with Burmese and English variants.
+
+Store all user-facing bot/UI content by stable content key with Burmese and English variants.
+
+This includes:
+
+  * bot messages
+  * menus
+  * button labels
+  * inline button text
+  * reminders
+  * notifications
+  * warnings
+  * payment instructions
+  * request-flow prompts
+  * help text
+  * status text
+
+Rules:
+
+  * code should reference stable content keys, not hardcoded visible text
+  * Burmese-first content should remain the default, with English toggle support
+  * content should be editable through the WebApp/admin system instead of requiring code edits for wording changes
+  * missing English content may fall back to Burmese
+  * missing content keys should return a safe admin-visible fallback path instead of silent failure
+
+### D.8.4 Dynamic WebApp-Controlled Content Rule
+
+All user-bot communication content should be treated as operational content managed from the WebApp, not as fixed code text.
+
+Purpose:
+
+  * allow wording updates without redeploy
+  * improve Burmese/English maintenance
+  * reduce repeated code edits for UX/content changes
+  * support future moderation, review, and content-version workflows
+
+Planning rule:
+
+  * when proposing new bot features, also define the required content keys and editable content groups
 
 ---
 
@@ -1084,6 +1127,29 @@ Store message content by message key with Burmese and English variants.
 - approve/reject payments
 - reset linked accounts
 - perform manual overrides with logs
+
+### D.9.4 Content and Localization Management
+
+Admin controls should also include WebApp-based content management for all user-facing bot/UI text.
+
+This should cover:
+
+  * message/content key list
+  * Burmese content editing
+  * English content editing
+  * button label editing
+  * menu label editing
+  * reminder/notification wording
+  * warning and denial wording
+  * payment instruction wording
+  * preview before publish where practical
+  * change history where practical
+
+Rules:
+
+  * content changes should not require code deployment
+  * visible text should not be treated as hardcoded business logic
+  * critical system meaning should remain attached to stable keys/status codes even if wording changes
 
 ---
 
@@ -1175,6 +1241,17 @@ Suggested menu:
 - repeated failed token attempts
 - unusual account linking activity
 - manual review backlog
+
+### D.12.3 Dynamic Message Delivery Rule
+
+Notifications and messages should be delivered using stable keys and dynamically loaded content.
+
+Rules:
+
+  * the system should send status/context plus content key, not rely on hardcoded visible text
+  * notification wording should remain editable from the WebApp
+  * warning, reminder, and support-facing explanatory text should follow the same multilingual content structure
+  * wording changes must not change underlying enforcement logic or audit meaning
 
 ---
 
