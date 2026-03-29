@@ -1386,32 +1386,36 @@ Bot MUST NOT enforce business rules independently.
 - GET /admin/payment/list
 
 ### C.7.5 Request Flow via API
-1. User selects file
-2. Bot calls:
-   POST /request/validate
-   Backend checks:
-   - token status
-   - expiry
-   - quota
-   - daily cap
-   - linked account
-   Response:
-   - approved / denied
-   - denial reason (if any)
-3. IF approved:
-   Bot sends "Download via ..." link
-4. User clicks link → redirected to delivery bot
-5. Delivery bot sends file with:
-   - expiration timer (3 minutes)
-   - auto-delete after timeout
-6. After successful send:
-   Bot calls:
-   POST /request/commit-success
-7. If send fails after 3 retries:
-   Bot calls:
-   POST /request/commit-failure
-   → backend logs
-   → admin notified
+
+  1. User selects file
+  2. Bot calls: POST /request/validate
+     Backend checks:
+      * token existence
+      * token status
+      * quota
+      * daily cap
+      * linked account eligibility
+      * failed-attempt cooldown
+      * duplicate guard
+     Response:
+      * approved / denied
+      * status_code
+      * message_key
+      * button_set_key
+      * quota_effect
+      * log_type
+  3. IF approved:
+      * bot sends "Download via ..." link
+  4. User clicks link -> redirected to delivery bot
+  5. Delivery bot sends file with:
+      * expiration timer (3 minutes)
+      * auto-delete after timeout
+  6. After successful send:
+      * bot calls: POST /request/commit-success
+  7. If send fails after 3 retries:
+      * bot calls: POST /request/commit-failure
+      * backend logs failure
+      * admin notified
 
 ### C.7.6 Secure File Delivery Design
 File delivery must use indirect method to reduce Telegram bot ban risk.
