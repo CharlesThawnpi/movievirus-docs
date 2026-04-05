@@ -643,46 +643,61 @@ Define:
 - max linked accounts
 
 ### C.1.1.1 Default Plan Definitions (Initial Configuration)
+
 System should support admin-defined plans.
 
 Initial recommended plans:
+
+Trial:
+- price: 0 MMK / 0 Stars
+- total quota: 3
+- daily cap: 1
+- max linked accounts: 1
+- plan_type: special
+- expiry behavior: optional time-based expiry allowed for trial use
 
 Starter:
 - price: 3,000 MMK / 50 Stars
 - total quota: 30
 - daily cap: 3
 - max linked accounts: 1
+- plan_type: standard
 
 Basic:
 - price: 5,000 MMK / 100 Stars
 - total quota: 50
 - daily cap: 5
 - max linked accounts: 2
+- plan_type: standard
 
 Plus:
 - price: 10,000 MMK / 150 Stars
 - total quota: 100
 - daily cap: 10
 - max linked accounts: 3
+- plan_type: standard
 
 Pro:
 - price: 15,000 MMK / 200 Stars
 - total quota: 150
 - daily cap: 15
 - max linked accounts: 4
+- plan_type: standard
 
 Premium:
 - price: 20,000 MMK / 250 Stars
 - total quota: 200
 - daily cap: 20
 - max linked accounts: 5
+- plan_type: standard
 
 Notes:
-- These are default presets only
-- Admin can modify or create new plans dynamically
-- Standard plans do not expire by time
-- Optional expiry is reserved only for special-case plans, promos, or manual override scenarios
-- Stars pricing is optional per plan and may be adjusted independently of MMK pricing through admin controls
+- These are default presets only.
+- Admin can modify or create new plans dynamically through the WebApp where safe.
+- Standard plans do not expire by time.
+- Trial is treated as a special-case plan and may use explicit expiry rules.
+- Premium exists as a top-tier default plan even if no legacy source plan maps directly into it.
+- Legacy may exist as an admin-created migration or exception plan, but its values must be explicitly defined before assignment.
 
 ### C.1.2 Token Statuses
 
