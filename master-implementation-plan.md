@@ -6322,6 +6322,42 @@ Mitigation:
 * log all conversions
 * allow admin manual adjustment
 * validate sample users before full migration
+
+C.X.X — Admin Bypass Implementation
+
+Add ADMIN_USER_IDS configuration:
+
+.env:
+ADMIN_USER_IDS=8256767008,XXXXXXXXXX
+
+Primary Bot Logic:
+
+1. On /start:
+   IF userId in ADMIN_USER_IDS:
+      → bypass resolveLinkedToken()
+      → show WELCOME_LINKED
+
+2. resolveLinkedToken():
+   IF userId in ADMIN_USER_IDS:
+      → return virtual link:
+         { tokenId: 'ADMIN_BYPASS', linkId: 'ADMIN_BYPASS' }
+
+3. validateRequest():
+   IF tokenId === 'ADMIN_BYPASS':
+      → skip quota validation
+      → allow request
+
+4. quota deduction:
+   IF tokenId === 'ADMIN_BYPASS':
+      → DO NOT deduct
+
+5. logging:
+   mark logs:
+   is_admin_bypass = true
+
+Security:
+- ADMIN_USER_IDS must be environment-controlled
+- Never expose in client-side code
 ---
 
 # =========================================================
