@@ -654,6 +654,12 @@ System should support admin-defined plans.
 
 Initial recommended plans:
 
+Trial:
+- price: 0 MMK / 0 Stars
+- total quota: 3
+- daily cap: 1
+- max linked accounts: 1
+
 Starter:
 - price: 3,000 MMK / 50 Stars
 - total quota: 30
@@ -690,6 +696,7 @@ Notes:
 - Standard plans do not expire by time
 - Optional expiry is reserved only for special-case plans, promos, or manual override scenarios
 - Stars pricing is optional per plan and may be adjusted independently of MMK pricing through admin controls
+- "Trail" plan is newly added plan with no charges. New user that communicate to the bot are automatically converted to a "Trial" plan user and will received a trial token.
 
 ### D.1.1.2 Phase-1 Locked Entitlement Decisions
 
@@ -750,6 +757,40 @@ Validation Logic:
   5. If validation failures reach 5 attempts within active protection window:
      * apply 5 minute cooldown
      * return a clear support-friendly denial message
+    
+D.2.1.1 — Owner/Admin Bypass Rule
+
+System must support a special access mode for owner/admin Telegram accounts.
+
+Definition:
+- Owner/admin accounts are identified via a predefined list of Telegram user IDs.
+- These accounts are not required to hold or validate a token.
+
+Behavior:
+- On /start:
+  - If user is in ADMIN_USER_IDS → treat as "linked"
+  - Skip token prompt entirely
+  - Show WELCOME_LINKED menu
+
+- On request:
+  - Skip token validation
+  - Skip quota deduction
+  - Allow full access to all features
+
+- On delivery:
+  - Process normally (enqueue + send)
+
+Constraints:
+- Admin actions must still be logged
+- Admin usage should NOT affect token-based analytics
+- Admin bypass must NOT be available to normal users
+
+Purpose:
+- Enable system owner to test, manage, and operate without consuming quota
+- Avoid needing token lifecycle for admin accounts
+
+Future extension:
+- Support multiple admin roles (owner, moderator, support)
 
 ### D.2.2 Linked Account Handling (Final Behavior)
 Rules:
