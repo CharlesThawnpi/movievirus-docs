@@ -4688,6 +4688,45 @@ Admin must be able to control:
    - restore quota
    - reset linked accounts
 
+### B.X.X Admin Tokens Table Enhancement (Phase J2)
+
+Enhancement:
+
+The Tokens Admin page must support user visibility and token traceability.
+
+New Columns:
+
+- telegram_user_id (from linked accounts, latest or primary)
+- telegram_username (nullable)
+- display_name (nullable)
+- linked_accounts_count
+- token_plaintext (admin-only reveal)
+
+Data Source Logic:
+
+- Join tokens with token_linked_accounts
+- For multiple linked accounts:
+  → show primary (first linked) OR latest linked account
+  → optionally show count of linked accounts
+
+Display Rules:
+
+- token_masked shown by default
+- token_plaintext shown only when:
+  → admin enables "Reveal Tokens" mode
+
+Security:
+
+- token_plaintext must come from tokens.token_plaintext_encrypted
+- decrypted server-side only
+- never stored in frontend state permanently
+
+UX:
+
+- Toggle: [Show Full Tokens]
+- Badge: number of linked accounts
+- Optional: hover or expand to show all linked users (future phase)
+
 Rules:
 - visible text must not be hardcoded in bot logic
 - all runtime content changes must resolve through DB-backed configuration

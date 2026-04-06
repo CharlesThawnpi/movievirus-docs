@@ -1075,6 +1075,25 @@ Failure:
 - masked token preview
 - plaintext delivered exactly once to user, then discarded
 
+### A.X.X Admin Token Visibility Rule
+
+Admin interfaces may display full token plaintext under controlled conditions.
+
+Rules:
+
+- Default display MUST be masked token
+- Full token reveal MUST be explicitly triggered (toggle, button, or admin mode)
+- Full token MUST NOT be exposed in public APIs or user-facing flows
+- Admin access to full tokens MUST be logged for audit (future phase)
+
+Purpose:
+
+- Enable support and debugging
+- Allow admin to identify token ownership
+- Preserve security for normal users
+
+Non-admin users MUST NEVER see full tokens except via controlled self "Show Token" flow.
+
 ### D.5.2 Validation Protection
 
   * rate limiting
