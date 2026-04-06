@@ -3198,6 +3198,51 @@ Purpose:
 - reinforce fairness and trust
 - align user-visible data with admin-visible records
 
+### C.11.4 Account Info — Token Reveal Feature
+
+Feature: User can view and copy their full token
+
+Flow:
+
+1. User clicks "👤 Account Info"
+2. System shows:
+   - Plan name
+   - Remaining quota
+   - Daily remaining
+   - Expiry (if any)
+   - Masked token
+
+3. Add button:
+   [🔓 Show Token]
+
+4. On click:
+   - System returns full plaintext token
+   - Display format:
+     - monospace (copy-friendly)
+     - clearly separated
+   - Example:
+
+     🔑 Your Token:
+     `MV-XXXXXX-XXXXXX-XXXXXX`
+
+5. Include warning message:
+   - "Do not share if you do not trust the receiver"
+   - "Your plan allows up to X linked accounts"
+
+6. Do NOT:
+   - store reveal event as plaintext in logs
+   - auto-show token without user action
+
+DB Impact:
+- No schema change required
+- Token must be retrievable via secure decryption or stored original (if applicable)
+
+API:
+- Add endpoint: getFullToken (secured)
+- Requires:
+  - valid Telegram user
+  - linked account verification
+
 ---
 
 # =========================================================
