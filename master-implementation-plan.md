@@ -24,8 +24,8 @@
 
 ## A.2 Version Block
 
-* Version: 1.1.0
-* Last Updated: 2026-03-29
+  * Version: 1.1.1
+  * Last Updated: 2026-04-06
 - Update Method: Section-based manual update
 - Update Rule: Prefer updating only the affected phase, module, feature, dependency, risk, queue item, or prompt source instead of regenerating the whole document
 
@@ -259,6 +259,14 @@
 * Added portability guidance so backup, restore, packaging, and VPS migration remain routine operational paths
 * Expanded admin configuration planning to include feature flags, module registry, and deployment/backup metadata
 * Strengthened system-health, database-strategy, and project-structure rules for migration-safe and change-tolerant implementation
+
+### A.3.33 | 2026-04-06
+
+  * Replaced legacy pre-launch token carry-over with full revoke-and-recreate reset policy
+  * Added implementation planning for global fresh-token migration with no carried quota, links, or entitlement state
+  * Added admin-selectable token regeneration modes for leak response, preserved-state replacement, and fresh custom issuance
+  * Clarified encrypted plaintext retention in tokens table as the only supported reveal/re-delivery source
+  * Planned removal of legacy-token UI/fallback paths after migration completion
 
 ---
 
@@ -569,12 +577,16 @@ Each plan should usually define:
 - max linked Telegram accounts
 
 ### B.3.3 Usage Logic
-- one successful file delivery consumes one quota unit
-- failed token validation should not consume quota
-- file not found should not consume quota
-- bot/send failure should not consume quota
-- duplicate requests within a short safe window may avoid double deduction
-- admin may manually restore quota when justified
+
+  * one successful file delivery consumes one quota unit
+  * failed token validation should not consume quota
+  * file not found should not consume quota
+  * bot/send failure should not consume quota
+  * duplicate requests within a short safe window may avoid double deduction
+  * admin may manually restore quota when justified
+  * token regeneration by itself must not consume quota
+  * linked-account reset during regeneration must not consume quota
+  * pre-launch global reset may intentionally create brand-new tokens with fresh quota state instead of carrying old usage forward
 
 ### B.3.4 Linked Account Logic
 - if Telegram account is already linked, allow normal validation
@@ -1257,9 +1269,15 @@ Failure:
 ## C.5 Module 05: Security and Abuse Prevention
 
 ### C.5.1 Token Security
-- long random tokens
-- hashed storage
-- masked previews
+
+  * long random tokens
+  * hashed storage for validation
+  * encrypted plaintext retention only in tokens table
+  * masked previews by default
+  * plaintext token never logged
+  * plaintext token never stored in linked_accounts
+  * reveal requires explicit admin action and audit log
+  * regeneration always creates a new token value
 
 ### C.5.2 Validation Protection
 - rate limiting
@@ -1267,9 +1285,20 @@ Failure:
 - suspicious attempt logging
 
 ### C.5.3 Recovery Security
-- log linked-account additions, resets, replacements
-- support revoke/reissue
-- optional PIN later
+
+  * log linked-account additions, resets, replacements
+  * support revoke/reissue
+  * support admin-triggered token regeneration
+  * support selectable regeneration modes
+  * optional PIN later
+
+Required regeneration modes:
+  * revoke old token immediately + create new token
+  * create new token and preserve current entitlement state
+  * create new token and preserve linked accounts
+  * create new token and reset linked accounts
+  * create new token as a fully fresh entitlement with custom plan/quota/allowances
+  * global pre-launch revoke-and-recreate migration/reset
 
 ### C.5.4 Payment Expiry Rule
 Pending payments:
@@ -1789,13 +1818,29 @@ Rules:
 - change duration
 
 ### C.9.2 Token Management
-- generate token
-- assign plan
-- activate/deactivate token
-- revoke token
-- reissue token
-- extend expiry
-- add bonus quota
+
+  * generate token
+  * assign plan
+  * activate/deactivate token
+  * revoke token
+  * reissue token
+  * regenerate token
+  * extend expiry
+  * add bonus quota
+  * create custom token with special limitations/allowances
+  * run pre-launch global revoke-and-recreate token reset
+
+Rules:
+  * tokens table remains the single source of truth
+  * token_plaintext_encrypted is stored only in tokens table
+  * linked_accounts must reference token_id and never store token plaintext
+  * regeneration action must support selectable options:
+    * revoke old immediately
+    * preserve entitlement state
+    * preserve linked accounts
+    * reset linked accounts
+    * start fresh user state
+  * pre-launch global reset mode must revoke all existing tokens and create fresh encrypted tokens with no carried user state when selected
 
 ### C.9.3 Review and Recovery Controls
 - inspect linked accounts
@@ -1947,53 +1992,72 @@ Purpose:
 - preserve historical auditability
 
 ### C.9.9 Tokens Management Screen
+
 Tokens screen must support:
-- search by token masked preview
-- search by member or Telegram user
-- view token status and plan
-- create token
-- activate token
-- suspend/revoke token
-- extend expiry
-- adjust quota
-- reissue token
-- inspect linked accounts
-- inspect payment/source history
-- inspect request history
+
+  * search by token masked preview
+  * search by member or Telegram user
+  * view token status and plan
+  * create token
+  * activate token
+  * suspend/revoke token
+  * extend expiry
+  * adjust quota
+  * regenerate token
+  * inspect linked accounts
+  * inspect payment/source history
+  * inspect request history
+  * reveal token only through explicit privileged action
+  * copy token for controlled re-delivery
+  * choose regeneration mode from UI
+  * run pre-launch global token reset from protected admin flow
 
 Recommended token detail panel:
-- token masked preview
-- plan snapshot
-- remaining quota
-- daily cap remaining
-- expiry
-- linked accounts list
-- recent usage
-- payment/source info
-- quota adjustment history
-- plan change history
+  * token masked preview
+  * reveal/copy action
+  * plan snapshot
+  * remaining quota
+  * daily cap remaining
+  * expiry
+  * linked accounts list
+  * recent usage
+  * payment/source info
+  * quota adjustment history
+  * plan change history
+  * regeneration history
 
 Rules:
-- plaintext token must never be shown after creation
-- masked preview only in list/detail views
-- privileged actions require confirmation
+
+  * plaintext token must never appear by default in list/detail views
+  * masked preview only in normal list/detail views
+  * reveal requires explicit privileged confirmation
+  * legacy-token fallback badges/messages should be removed after migration completion
+  * privileged actions require confirmation
+  * global reset action must require strong confirmation text and audit logging
 
 ### C.9.10 Members Screen
+
 Members screen must support:
-- search by Telegram user ID
-- search by username
-- search by phone or payment reference where available
-- view owned tokens
-- view request history
-- view linked-account history
-- view payment history
-- view language preference
-- view support notes
+
+  * search by Telegram user ID
+  * search by username
+  * search by phone or payment reference where available
+  * view owned tokens
+  * view request history
+  * view linked-account history
+  * view payment history
+  * view language preference
+  * view support notes
+  * create fresh token for member
+  * regenerate current token for member
+  * choose whether regeneration preserves state or starts fresh
+  * jump from member to token detail safely
 
 Rules:
-- member profile is support-facing identity context
-- member records must not replace token-based entitlement enforcement
-- admin can add notes but note changes must be auditable
+  * member profile is support-facing identity context
+  * member records must not replace token-based entitlement enforcement
+  * admin can add notes but note changes must be auditable
+  * token regeneration from member view must use the same backend regeneration policy/options as token view
 
 ### C.9.11 Linked Accounts Screen
 Linked Accounts screen must support:
