@@ -2397,6 +2397,51 @@ Indexes:
 - index(telegram_user_id)
 - index(token_id, link_status)
 
+### B.X.X Token Reveal Storage Correction (Phase J1 Adjustment)
+
+Issue Identified:
+Initial J1 implementation stored encrypted token in `token_linked_accounts`.
+
+Correction:
+
+- Remove token_plaintext_encrypted from `token_linked_accounts`
+- Add token_plaintext_encrypted to `tokens` table instead
+
+Updated Data Model:
+
+tokens:
+- id
+- token_hash
+- token_masked
+- token_plaintext_encrypted ✅ (single source)
+
+token_linked_accounts:
+- id
+- token_id (FK)
+- telegram_user_id
+- link_status
+- (NO token fields)
+
+Flow Update:
+
+Token Reveal:
+
+1. Bot → API (telegram_user_id)
+2. Resolve linked token_id
+3. Fetch encrypted token from `tokens`
+4. Decrypt
+5. Return plaintext (NOT logged)
+
+Migration Notes:
+
+- Existing encrypted values in linked_accounts should be migrated or discarded
+- Future links should NOT store token plaintext
+
+Security:
+
+- Encryption key remains server-side only
+- Token reveal remains on-demand only
+
 #### Table: daily_usage_counters
 Purpose:
 - fast enforcement of per-token daily cap

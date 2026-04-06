@@ -1075,6 +1075,32 @@ Failure:
 - masked token preview
 - plaintext delivered exactly once to user, then discarded
 
+### A.X.X Token Storage Authority Rule
+
+The system MUST maintain a single source of truth for token data.
+
+Rules:
+
+- Token plaintext (if stored in reversible form) MUST exist only in the `tokens` table
+- Linked account tables MUST NOT store token copies (encrypted or plaintext)
+- All token reveal operations MUST retrieve from the token entity, not linked accounts
+
+Rationale:
+
+- Prevent duplication and inconsistency
+- Ensure revoke/reissue logic remains centralized
+- Maintain clear ownership: token = entitlement, not user-specific data
+
+Violation examples (NOT allowed):
+
+- Storing token_plaintext in token_linked_accounts
+- Storing token copies per Telegram account
+
+Correct approach:
+
+- Store encrypted token in tokens table
+- Linked accounts only store token_id reference
+
 ### D.5.2 Validation Protection
 
   * rate limiting
