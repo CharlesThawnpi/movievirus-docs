@@ -24,8 +24,8 @@
 
 ## A.2 Version Block
 
-* Version: 1.3.0
-* Last Updated: 2026-03-29
+  * Version: 1.3.1
+  * Last Updated: 2026-04-06
 - Instruction Description Limit: 250 characters
 - Instruction Body Limit: 70,000 characters
 - Update Method: Section-based manual update
@@ -181,6 +181,14 @@ Purpose:
 * Added portability rule so deployment, backup, restore, and VPS migration remain routine operational tasks instead of redesign events
 * Expanded WebApp-first control to include safe runtime feature toggles, module enable/disable states, and migration/export readiness where appropriate
 * Added future-planning guidance for feature flags, module isolation, and migration-safe packaging
+
+### A.4.18 | 2026-04-06
+
+  * Replaced pre-launch legacy-token carry-over approach with full fresh-token reset policy
+  * Standardized pre-launch global token regeneration as revoke-old-and-recreate-new with no entitlement carry-over
+  * Added admin-selectable token regeneration modes for support, leak response, and custom allowance issuance
+  * Aligned token security and recovery rules around encrypted plaintext retention in tokens table only
+  * Removed dependency on legacy-token UI/fallback behavior once migration tooling is completed
 ---
 
 # =========================================================
@@ -275,34 +283,39 @@ Purpose:
 
 
 ### B.2 Token Model
+
 Token represents a subscription entitlement tied to a plan.
 
 Core Principles:
-- One token = one plan instance
-- Token enforces:
-  - total quota
-  - daily cap
-  - max linked Telegram accounts
-- Standard tokens do NOT expire by time
+
+  * One token = one plan instance
+  * Token enforces:
+    * total quota
+    * daily cap
+    * max linked Telegram accounts
+  * Standard tokens do NOT expire by time
+  * tokens table is the single source of truth for token lifecycle and token plaintext encryption storage
 
 Rules:
-- Multiple users can use the same token only within the plan's sharing limit
-- Each linked Telegram account counts toward the sharing limit
-- System must enforce max linked account restriction strictly
-- Token state changes are driven primarily by:
-  - activation
-  - quota exhaustion
-  - suspension
-  - revocation
-  - manual/admin adjustment
-- Time-based expiry is reserved only for explicit non-standard plans or manual override cases
-- Plaintext token must be delivered to user exactly once via bot message, then discarded from memory
-- Only hashed token and masked preview are stored and displayed after creation
-
-Purpose:
-- allow controlled sharing
-- maintain fairness across plans
-- prevent uncontrolled token distribution
+  * Multiple users can use the same token only within the plan's sharing limit
+  * Each linked Telegram account counts toward the sharing limit
+  * System must enforce max linked account restriction strictly
+  * Token state changes are driven primarily by:
+    * activation
+    * quota exhaustion
+    * suspension
+    * revocation
+    * regeneration/reissue
+    * manual/admin adjustment
+  * Time-based expiry is reserved only for explicit non-standard plans or manual override cases
+  * Plaintext token may be shown only at controlled issuance/reveal moments from encrypted storage in tokens table
+  * Hashed token must remain the validation source
+  * Masked preview is the default display state in admin lists and normal detail views
+  * Linked accounts must never store plaintext token values
+  * Pre-launch reset rule: when the system has not officially launched yet, legacy or test tokens may be globally revoked and replaced with completely fresh tokens
+  * Pre-launch reset rule: global recreation may start users as fresh users with no carried quota, no carried linked accounts, and no carried entitlement state, if this is the chosen reset policy
+  * New-user default rule: the system may automatically generate a token for newly created eligible users according to the active onboarding/payment flow
+  * Admin override rule: admin may manually create tokens with custom limitations or allowances for support, promo, recovery, or special-access cases
 
 
 ### B.3 Device Meaning Rule
@@ -1070,10 +1083,15 @@ Failure:
 ## D.5 Module 05: Security and Abuse Prevention
 
 ### D.5.1 Token Security
-- long random non-predictable token format
-- hashed storage
-- masked token preview
-- plaintext delivered exactly once to user, then discarded
+
+  * long random non-predictable token format
+  * hashed storage for validation
+  * encrypted plaintext retention only in tokens table when admin reveal/re-delivery is supported
+  * masked token preview by default in UI
+  * plaintext token must never be logged
+  * plaintext token must never be stored in linked_accounts or other duplicate tables
+  * reveal must be explicit, permission-checked, and audit-logged
+  * regeneration must create a new token value; old leaked or replaced token must not remain valid unless an explicit non-immediate mode is later introduced
 
 ### D.5.2 Validation Protection
 
@@ -1092,9 +1110,22 @@ Implementation expectation:
   * cooldown should not consume quota
 
 ### D.5.3 Recovery Security
-- log linked-account additions, replacements, and resets
-- support revoke/reissue
-- support optional PIN later
+
+  * log linked-account additions, replacements, and resets
+  * support revoke/reissue
+  * support admin-triggered token regeneration
+  * support selectable regeneration modes for different support cases
+  * support optional PIN later
+
+Rules:
+  * regeneration must be audit-logged with reason
+  * regeneration options may include:
+    * revoke old token immediately and create new token
+    * keep linked accounts on the replacement token
+    * reset linked accounts on the replacement token
+    * preserve entitlement state when support case requires it
+    * issue a fresh token with custom plan/quota/allowance when admin intentionally starts a new entitlement state
+  * pre-launch bulk reset may revoke all old tokens in one operation and recreate fresh encrypted tokens as a controlled migration/reset action
 
 ### D.5.4 Payment Expiry Rule
 Pending payments:
@@ -1305,15 +1336,26 @@ Admin Support Workflow Reference:
 
 Admin is allowed to:
 
-* approve or reject local manual payments
-* manually restore quota when justified
-* manually adjust token state when needed for support recovery
+  * approve or reject local manual payments
+  * manually restore quota when justified
+  * manually adjust token state when needed for support recovery
+  * manually create fresh tokens
+  * manually regenerate/reissue tokens for leak response or support recovery
+  * trigger controlled pre-launch bulk token reset
 
 Rules:
 
-* quota restore must be logged separately from normal file usage
-* quota restore reason and acting admin must be recorded
-* restore actions must not overwrite prior usage history
+  * quota restore must be logged separately from normal file usage
+  * quota restore reason and acting admin must be recorded
+  * restore actions must not overwrite prior usage history
+  * bulk reset or regeneration actions must record:
+    * acting admin
+    * action scope
+    * reason
+    * revoked token ids
+    * newly created token ids
+    * whether linked accounts were preserved or reset
+    * whether entitlement state was preserved or restarted fresh
 
 ### D.9.3.2 Admin Action Audit Rule
 
@@ -1343,15 +1385,26 @@ Rules:
     - allow controlled support flow
 
 ### D.9.3.4 Token Control Rule
+
 Admin may:
-- suspend token
-- reactivate token
-- revoke token
+
+  * suspend token
+  * reactivate token
+  * revoke token
+  * regenerate token
+  * create replacement token with preserved state
+  * create replacement token with fresh state
+
 Rules:
-- suspended = temporary block
-- revoked = permanent
-- must apply immediately in validation
-- must be logged
+
+  * suspended = temporary block
+  * revoked = permanent for that token value
+  * regenerated/replaced token must receive a new token value
+  * old token must be invalid immediately when revoke-and-replace mode is used
+  * preserved-state mode may keep linked accounts and entitlement state when explicitly selected
+  * fresh-state mode may start the replacement as a completely new entitlement when explicitly selected
+  * all token-control actions must apply immediately in validation when committed
+  * all token-control actions must be logged
 
 ### D.9.3.5 Linked Account Reset Rule
 
