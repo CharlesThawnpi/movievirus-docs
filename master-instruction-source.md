@@ -1075,6 +1075,30 @@ Failure:
 - masked token preview
 - plaintext delivered exactly once to user, then discarded
 
+### D.5.1.1 Token Visibility & User Access
+
+By default, tokens MUST be stored hashed and only displayed in masked format.
+
+However, the system MUST support controlled token reveal for legitimate user use cases.
+
+Rules:
+
+- Token is masked by default (e.g., MV-XXXX-****-****)
+- User MAY request to view full token via Account Info
+- Full token reveal MUST be:
+  - explicit (user-triggered action)
+  - temporary (shown only in that message)
+  - not stored in logs or history in plaintext
+- Token reveal is allowed because:
+  - system enforces max linked Telegram accounts
+  - sharing is controlled via linked account limits, not secrecy
+- Admin panel may also reveal full token for support purposes
+
+Security notes:
+- Never expose token in logs
+- Never expose token in API responses unless explicitly requested for reveal
+- Never auto-display full token on /start or normal flows
+
 ### D.5.2 Validation Protection
 
   * rate limiting
