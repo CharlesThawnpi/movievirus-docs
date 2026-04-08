@@ -181,6 +181,21 @@ Purpose:
 * Added portability rule so deployment, backup, restore, and VPS migration remain routine operational tasks instead of redesign events
 * Expanded WebApp-first control to include safe runtime feature toggles, module enable/disable states, and migration/export readiness where appropriate
 * Added future-planning guidance for feature flags, module isolation, and migration-safe packaging
+
+### A.4.18 | 2026-04-08
+* Reconsidered new user onboarding flow to remove token barrier for first-time users
+* Added New User Auto-Enrollment Rule (D.2.1.2): brand new users are automatically enrolled in the Trial plan and linked without being asked for a token
+* Updated D.2.1 Token Validation to distinguish new users (auto-enroll) from returning unlinked users (ask for token)
+* Updated D.3.1 Request Flow to reflect the two-branch ELSE path (new user vs returning unlinked user)
+* Fixed typo "Trail" → "Trial" in D.1.1.1 plan notes
+* Added trial_auto_enrolled and trial_exhausted compiled instruction states
+
+### A.4.19 | 2026-04-08
+* Introduced in-place message editing as the standard interaction mode for Telegram bot menu navigation
+* Added render_mode (EDIT / SEND) to D.12.3 Message Rendering Contract
+* Added render_mode to RESPONSE CONTRACT RULE in compiled instruction
+* EDIT (editMessageText) is the default for callback-query-triggered responses; SEND (sendMessage) is used for initial messages and proactive notifications
+* Added answerCallbackQuery requirement and stale-button prevention guidance
 ---
 
 # =========================================================
@@ -696,7 +711,7 @@ Notes:
 - Standard plans do not expire by time
 - Optional expiry is reserved only for special-case plans, promos, or manual override scenarios
 - Stars pricing is optional per plan and may be adjusted independently of MMK pricing through admin controls
-- "Trail" plan is newly added plan with no charges. New user that communicate to the bot are automatically converted to a "Trial" plan user and will received a trial token.
+- "Trial" plan is a newly added plan with no charges. New users who contact the bot for the first time are automatically enrolled in the Trial plan and receive a trial token without needing to enter one. This removes the token barrier for first-time users and improves new member conversion.
 
 ### D.1.1.2 Phase-1 Locked Entitlement Decisions
 
@@ -740,10 +755,17 @@ Suggested statuses:
 ### D.2.1 Token Validation (Final Behavior)
 
 Validation Logic:
+  0. IF telegram_user_id has NO record in the system (completely new user):
+     * auto-enroll in Trial plan
+     * auto-issue trial token
+     * auto-link the Telegram account
+     * return TRIAL_AUTO_ENROLLED response
+     * do NOT ask for token
+     * skip to post-link validation flow
   1. IF telegram_user_id is already linked to token:
      * DO NOT ask for token again
      * allow access directly
-  2. IF telegram_user_id is NOT linked:
+  2. IF telegram_user_id exists in system but is NOT linked (returning unlinked user):
      * require token input
      * validate token
      * IF valid: -> proceed to linking eligibility logic
@@ -791,6 +813,40 @@ Purpose:
 
 Future extension:
 - Support multiple admin roles (owner, moderator, support)
+
+D.2.1.2 — New User Auto-Enrollment Rule
+
+System must automatically enroll brand new users into the Trial plan on first contact.
+
+Definition:
+- A new user is a Telegram account with NO existing record in the system (never interacted before).
+- An unlinked returning user is a Telegram account that exists in the system but is not yet linked to any token (e.g., moved to a new device, or has a token but has not entered it yet). These users should still be asked for their token.
+
+Behavior:
+- On /start or first interaction:
+  - Check if telegram_user_id exists in the system
+  - IF not found (brand new):
+    * create a member record
+    * auto-assign Trial plan
+    * auto-issue a trial token
+    * auto-link the Telegram account to the trial token
+    * deliver TRIAL_AUTO_ENROLLED welcome message
+    * show trial quota and what the service offers
+    * show Buy Plan / Upgrade Plan option in welcome message
+  - IF found but not linked (returning unlinked):
+    * ask for token input as normal
+
+Constraints:
+- Trial auto-enrollment must be atomic: member + token + link must be created in one transaction
+- Trial token must follow the same token security rules (hashed, plaintext delivered once)
+- Auto-enrollment must be logged as a standard enrollment event in audit logs
+- If Trial plan is disabled or unavailable in system config, auto-enrollment must gracefully fall back to asking for token
+
+Purpose:
+- Remove the token barrier for first-time users
+- Improve new member conversion rate
+- Let potential customers experience the service before committing to a paid plan
+- Reduce drop-off caused by asking new users for a token they do not have
 
 ### D.2.2 Linked Account Handling (Final Behavior)
 Rules:
@@ -968,7 +1024,13 @@ Search → Select File → Request File
 
 IF telegram_user_id is linked:
   → proceed
-ELSE:
+ELSE IF telegram_user_id has NO record in system (brand new user):
+  → auto-enroll in Trial plan (see D.2.1.2)
+  → auto-issue trial token
+  → auto-link account
+  → welcome user with trial details
+  → proceed
+ELSE (returning user, not linked):
   → ask token
   → validate
   → link account if slot available
@@ -1528,6 +1590,17 @@ Rendering contract:
   * status_code = enforcement/result meaning
   * message_key = visible text lookup key
   * button_set_key = visible action/button layout key
+  * render_mode = how the bot delivers the response (EDIT or SEND)
+
+render_mode values:
+  * EDIT — bot edits the existing message in place using Telegram editMessageText
+    * used when response is triggered by a callback_query (button click)
+    * no new message is created; the same message area updates smoothly
+    * eliminates stale/dangling buttons on old messages
+  * SEND — bot sends a new message using Telegram sendMessage
+    * used for initial messages (/start, auto-enrollment welcome)
+    * used for proactive server-to-user notifications (reminders, payment approved/rejected)
+    * used for file delivery results (download link must be a standalone persistent message)
 
 Rules:
 
@@ -1535,6 +1608,8 @@ Rules:
   * WebApp and bot should use the same backend decision contract where relevant
   * Burmese and English wording should remain editable through the dynamic content system
   * support/admin investigation should be able to trace a shown user message back to stable status_code and log_type
+  * bot MUST call answerCallbackQuery for every callback_query received, regardless of render_mode
+  * failure to call answerCallbackQuery causes Telegram to show a permanent loading spinner on the button
 
 ---
 
@@ -1680,6 +1755,15 @@ LOCKED PHASE-1 DECISIONS
 - failed validation protection = 5 failed attempts -> 5 minute cooldown
 - admin quota restore = allowed with audit logging
 - quota deduction = post-delivery success only
+- new user auto-enrollment = brand new users are automatically enrolled in Trial plan on first contact without being asked for a token
+
+NEW USER RULE
+- A brand new user (first contact, no record in system) must be automatically enrolled in the Trial plan.
+- Auto-enrollment creates a member record, issues a trial token, and links the Telegram account atomically.
+- The user is welcomed with trial details and Buy Plan / Upgrade Plan options.
+- A returning unlinked user (exists in system but not currently linked) must still be asked for a token.
+- Trial auto-enrollment must be logged as a standard enrollment event in audit logs.
+- If the Trial plan is disabled or unavailable, auto-enrollment falls back to asking for a token.
 
 LINKED-ACCOUNT RULE
 - If Telegram account is already linked, allow normal validation.
@@ -1701,6 +1785,7 @@ When designing entitlement-related backend outcomes, use a structured response c
 - button_set_key
 - quota_effect
 - log_type
+- render_mode
 - optional metadata
 
 Rules:
@@ -1708,6 +1793,9 @@ Rules:
 - bot and WebApp must render backend-decided output only
 - visible text must come from dynamic content keys, not hardcoded wording
 - visible buttons must come from backend-selected button sets, not UI guesses
+- render_mode EDIT means bot calls editMessageText on the existing message (no new message)
+- render_mode SEND means bot calls sendMessage to create a new message
+- bot must call answerCallbackQuery for every callback_query, regardless of render_mode
 
 AUDIT RULE
 - All important admin actions must be logged with who acted, what changed, before/after state where relevant, reason, and timestamp.

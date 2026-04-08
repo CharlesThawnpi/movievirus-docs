@@ -260,6 +260,22 @@
 * Expanded admin configuration planning to include feature flags, module registry, and deployment/backup metadata
 * Strengthened system-health, database-strategy, and project-structure rules for migration-safe and change-tolerant implementation
 
+### A.3.33 | 2026-04-08
+* Reconsidered new user onboarding flow to remove the token barrier for first-time users
+* Added New User Auto-Enrollment Rule as C.2.1.2: brand new users are automatically enrolled in Trial plan and linked without being asked for a token
+* Updated C.2.1 validation engine to add new user detection as first check (step 0)
+* Updated C.2.4 Backend Core Decision Engine to include new user detection in the Resolve Actor step
+* Updated C.3.1 Request Flow to distinguish new users (auto-enroll) from returning unlinked users (ask for token)
+* Added trial_auto_enrolled and trial_exhausted states to C.3.3 State → UX Mapping
+* Added new user auto-enrollment as a locked Phase-1 decision in B.3.10
+
+### A.3.34 | 2026-04-08
+* Introduced in-place message editing (EDIT vs SEND) as the standard message rendering mode for Telegram bot interactions
+* Added Message Render Mode Rule as C.7.11.1: button-click (callback_query) responses must edit the existing message in place; only proactive and initial messages send new messages
+* Added `render_mode` field to the Response Contract, C.3.3 Core Mapping Structure, all C.3.3 mapping states, and API response format
+* Updated C.3.1.2 Dynamic Button System with in-place edit preference, stale-button prevention guidance, and answerCallbackQuery requirement
+* Updated C.7.11 Button Handling Flow to specify editMessageText for callback-triggered responses
+
 ---
 
 # =========================================================
@@ -617,6 +633,7 @@ The following decisions are locked for Phase 1 and must not be treated as implem
 * standard plans = no time-based expiry
 * Telegram Stars = auto activation after verified successful payment
 * admin quota restore = allowed with dedicated audit logging
+* new user auto-enrollment = brand new users (no system record) are automatically enrolled in Trial plan on first contact without being asked for a token; returning unlinked users are still asked for a token
 
 Purpose:
 * convert planning logic into developer-safe implementation rules
@@ -696,6 +713,7 @@ Notes:
 - Admin can modify or create new plans dynamically through the WebApp where safe.
 - Standard plans do not expire by time.
 - Trial is treated as a special-case plan and may use explicit expiry rules.
+- Trial plan is used for new user auto-enrollment: brand new users who contact the bot for the first time are automatically enrolled in the Trial plan without being asked for a token. See C.2.1.2 for the full rule.
 - Premium exists as a top-tier default plan even if no legacy source plan maps directly into it.
 - Legacy may exist as an admin-created migration or exception plan, but its values must be explicitly defined before assignment.
 
@@ -729,12 +747,15 @@ Rules:
 
 ### C.2.1 Token & Linked Account Validation Engine
 
-Validation must prioritize linked account recognition over repeated token input.
+Validation must prioritize new user auto-enrollment and linked account recognition over repeated token input.
 
 Core Logic:
+  0. Check if telegram_user_id has any record in the system:
+     * IF no record found (brand new user): → auto-enroll in Trial plan → auto-issue trial token → auto-link account → return TRIAL_AUTO_ENROLLED → skip token input → proceed to post-link validation
+     * IF record found: → continue to step 1
   1. Check if telegram_user_id is linked to any token:
      * IF linked: → use linked token → skip token input
-     * ELSE: → request token → validate token → link account if slot available
+     * ELSE (returning unlinked user): → request token → validate token → link account if slot available
   2. Enforce in exact order:
      * token existence
      * token status
@@ -751,9 +772,48 @@ Core Logic:
   6. Failed validation protection:
      * 5 failed attempts -> 5 minute cooldown
 
+### C.2.1.2 New User Auto-Enrollment Rule
+
+System must automatically enroll brand new users into the Trial plan on first contact.
+
+Definition:
+- A new user is a Telegram account with NO existing record in the system (never interacted before).
+- A returning unlinked user is a Telegram account that exists in the system but is not currently linked to a token. These users must still be asked for their token.
+
+Behavior:
+- On /start or first interaction:
+  - Check if telegram_user_id has any record in the system
+  - IF not found (brand new user):
+    * create member record
+    * auto-assign Trial plan
+    * auto-issue trial token
+    * auto-link the Telegram account to the trial token
+    * deliver TRIAL_AUTO_ENROLLED welcome response
+    * welcome message must include:
+      - trial quota remaining
+      - daily cap
+      - service description
+      - Buy Plan / Upgrade Plan buttons
+  - IF found but not linked (returning unlinked user):
+    * prompt for token entry as normal
+
+Constraints:
+- Trial auto-enrollment must be atomic: member record + token creation + account linking in one DB transaction
+- Trial token must follow standard token security rules (hashed storage, plaintext delivered exactly once)
+- Auto-enrollment must be logged as a standard enrollment_auto_trial event in audit logs
+- If the Trial plan is disabled or unavailable in system config, auto-enrollment must fall back gracefully to asking for token input
+- Trial auto-enrollment must not be available to admin-bypass accounts (ADMIN_USER_IDS skip this entirely)
+
+Purpose:
+- Remove the token barrier for first-time users
+- Improve new member conversion rate
+- Let potential customers experience the service before committing to a paid plan
+- Reduce drop-off caused by asking new users for a token they do not have
+
 Purpose:
 
   * remove repeated token entry
+  * enroll new users immediately without friction
   * enforce fairness via quota + daily cap + controlled sharing
   * keep backend logic deterministic
     
@@ -793,6 +853,13 @@ Purpose:
 The backend must be the only authority for entitlement decisions.
 
 Decision order per request:
+  0. Resolve new user check
+     * check if telegram_user_id has any record in the system
+     * IF no record found (brand new user):
+       * run auto-enrollment (see C.2.1.2)
+       * return TRIAL_AUTO_ENROLLED
+       * skip steps 1–4 and proceed directly to quota/delivery validation
+     * IF record found: continue to step 1
   1. Resolve actor
      * identify telegram_user_id
      * identify whether access comes from linked-account path or token-input path
@@ -942,9 +1009,15 @@ Store in:
 ### C.3.1 Request Flow Implementation
 1. User selects file
 2. System checks access path:
-   IF telegram_user_id is linked:
+   IF telegram_user_id has NO record in system (brand new user):
+      → auto-enroll in Trial plan (see C.2.1.2)
+      → auto-issue trial token
+      → auto-link account
+      → welcome user with trial details
       → continue
-   ELSE:
+   ELSE IF telegram_user_id is linked:
+      → continue
+   ELSE (returning user, not linked):
       → request token
       → validate token
       → link account if allowed
@@ -1000,6 +1073,29 @@ Rules:
    - which buttons to show
    - button labels (via message keys)
    - button actions (callback or deep link)
+   - render_mode (EDIT or SEND)
+
+In-Place Message Edit Preference:
+- When a user clicks an inline keyboard button, Telegram sends a callback_query to the bot.
+- The bot MUST prefer editing the existing message in place (Telegram editMessageText) rather than sending a new message.
+- The bot MUST call answerCallbackQuery to acknowledge every button press and dismiss the loading spinner.
+- Sending a new message for every button click causes stale/dangling buttons on old messages, which users may still click, wasting server resources and creating confusing UX.
+
+When to EDIT existing message (render_mode: EDIT):
+- Any response triggered by a callback_query (inline button click)
+- Navigation between menus (Main Menu ↔ My Account ↔ Help ↔ Search, etc.)
+- Status updates during a request flow within the same interaction
+- Denial messages (quota exceeded, token invalid, cooldown) triggered by a button press
+
+When to SEND new message (render_mode: SEND):
+- Initial messages: /start, auto-enrollment welcome, first contact
+- Proactive server-to-user notifications: quota reminders, payment approved/rejected
+- File delivery result: download link should always be a new standalone message the user can scroll back to
+- Any event triggered outside a callback context (scheduled tasks, admin actions)
+
+Stale Button Prevention:
+- When a response requires render_mode: SEND (e.g. proactive notification), the bot should NOT delete or edit the old interactive message.
+- The bot SHOULD avoid leaving old interactive menus active when context has changed significantly. Where practical, the bot may call editMessageReplyMarkup with an empty keyboard on any outdated interactive message.
 
 Button Types:
 1. Navigation Buttons
@@ -1058,13 +1154,27 @@ OUTPUT:
   * button_set_key
   * quota_effect
   * log_type
+  * render_mode
 
 Optional:
   * metadata
 
+render_mode values:
+  * EDIT — bot edits the existing message in place (editMessageText); used for callback-query-triggered states
+  * SEND — bot sends a new message (sendMessage); used for initial messages and proactive notifications
+
 #### Mapping Table (Phase 1)
 
 ##### 1. ACCESS / TOKEN
+
+STATE: trial_auto_enrolled
+  * status_code: TRIAL_AUTO_ENROLLED
+  * message_key: WELCOME_TRIAL
+  * button_set_key: TRIAL_WELCOME
+  * quota_effect: none
+  * log_type: enrollment_auto_trial
+  * render_mode: SEND
+  * metadata: trial_quota_remaining, trial_daily_cap, plan_name
 
 STATE: token_required
   * status_code: TOKEN_REQUIRED
@@ -1072,6 +1182,7 @@ STATE: token_required
   * button_set_key: TOKEN_ENTRY
   * quota_effect: none
   * log_type: validation_prompt
+  * render_mode: EDIT
 
 STATE: token_invalid
   * status_code: INVALID_TOKEN
@@ -1079,6 +1190,7 @@ STATE: token_invalid
   * button_set_key: TOKEN_RETRY
   * quota_effect: none
   * log_type: validation_denied
+  * render_mode: EDIT
 
 STATE: token_linked_success
   * status_code: TOKEN_LINKED_SUCCESS
@@ -1086,8 +1198,18 @@ STATE: token_linked_success
   * button_set_key: MAIN_MENU
   * quota_effect: none
   * log_type: linked_account_added
+  * render_mode: EDIT
 
 ##### 2. PLAN / ACCESS CONTROL
+
+STATE: trial_exhausted
+  * status_code: TRIAL_EXHAUSTED
+  * message_key: TRIAL_QUOTA_EXHAUSTED
+  * button_set_key: PLAN_PURCHASE
+  * quota_effect: none
+  * log_type: validation_denied
+  * render_mode: EDIT
+  * metadata: recommended_plan
 
 STATE: quota_exhausted
   * status_code: TOKEN_EXHAUSTED
@@ -1095,6 +1217,7 @@ STATE: quota_exhausted
   * button_set_key: PLAN_ACTIONS
   * quota_effect: none
   * log_type: validation_denied
+  * render_mode: EDIT
 
 STATE: daily_limit_reached
   * status_code: TOKEN_DAILY_CAP_REACHED
@@ -1102,6 +1225,7 @@ STATE: daily_limit_reached
   * button_set_key: PLAN_ACTIONS
   * quota_effect: none
   * log_type: validation_denied
+  * render_mode: EDIT
 
 STATE: linked_account_limit_reached
   * status_code: LINKED_ACCOUNT_LIMIT_REACHED
@@ -1109,6 +1233,7 @@ STATE: linked_account_limit_reached
   * button_set_key: HELP
   * quota_effect: none
   * log_type: validation_denied
+  * render_mode: EDIT
 
 STATE: validation_cooldown_blocked
   * status_code: VALIDATION_COOLDOWN_BLOCKED
@@ -1116,6 +1241,7 @@ STATE: validation_cooldown_blocked
   * button_set_key: HELP
   * quota_effect: none
   * log_type: validation_blocked
+  * render_mode: EDIT
 
 ##### 3. REMINDERS
 
@@ -1125,6 +1251,7 @@ STATE: quota_5_left
   * button_set_key: PLAN_ACTIONS
   * quota_effect: none
   * log_type: reminder_sent
+  * render_mode: SEND
 
 STATE: quota_1_left
   * status_code: QUOTA_REMINDER_1_LEFT
@@ -1132,6 +1259,7 @@ STATE: quota_1_left
   * button_set_key: PLAN_ACTIONS
   * quota_effect: none
   * log_type: reminder_sent
+  * render_mode: SEND
 
 STATE: quota_0_left
   * status_code: TOKEN_EXHAUSTED
@@ -1139,6 +1267,7 @@ STATE: quota_0_left
   * button_set_key: PLAN_PURCHASE
   * quota_effect: none
   * log_type: reminder_sent
+  * render_mode: SEND
 
 ##### 4. REQUEST FLOW
 
@@ -1148,6 +1277,7 @@ STATE: request_confirm
   * button_set_key: REQUEST_CONFIRM
   * quota_effect: none
   * log_type: request_validated
+  * render_mode: EDIT
 
 STATE: request_processing
   * status_code: REQUEST_PROCESSING
@@ -1155,6 +1285,7 @@ STATE: request_processing
   * button_set_key: NONE
   * quota_effect: none
   * log_type: request_processing
+  * render_mode: EDIT
 
 STATE: duplicate_ignored
   * status_code: DUPLICATE_REQUEST_IGNORED
@@ -1162,6 +1293,7 @@ STATE: duplicate_ignored
   * button_set_key: BACK
   * quota_effect: none
   * log_type: duplicate_ignored
+  * render_mode: EDIT
 
 ##### 5. DELIVERY
 
@@ -1171,6 +1303,7 @@ STATE: delivery_success
   * button_set_key: DOWNLOAD_ACTION
   * quota_effect: decremented
   * log_type: delivery_success
+  * render_mode: SEND
 
 STATE: delivery_failed
   * status_code: REQUEST_FAILURE_RECORDED
@@ -1178,6 +1311,7 @@ STATE: delivery_failed
   * button_set_key: RETRY_ACTION
   * quota_effect: none
   * log_type: delivery_failed
+  * render_mode: EDIT
 
 ##### 6. PAYMENT
 
@@ -1187,6 +1321,7 @@ STATE: payment_submitted
   * button_set_key: NONE
   * quota_effect: none
   * log_type: payment_submitted
+  * render_mode: EDIT
 
 STATE: payment_approved
   * status_code: PAYMENT_APPROVED_TOKEN_CREATED
@@ -1194,6 +1329,7 @@ STATE: payment_approved
   * button_set_key: MAIN_MENU
   * quota_effect: none
   * log_type: payment_approved
+  * render_mode: SEND
 
 STATE: payment_rejected
   * status_code: PAYMENT_REJECTED
@@ -1201,6 +1337,7 @@ STATE: payment_rejected
   * button_set_key: PLAN_PURCHASE
   * quota_effect: none
   * log_type: payment_rejected
+  * render_mode: SEND
 
 #### Rules
 
@@ -1209,8 +1346,10 @@ STATE: payment_rejected
   * every state MUST map to one button_set_key (or NONE)
   * every state MUST explicitly define quota_effect
   * every state MUST explicitly define log_type
+  * every state MUST explicitly define render_mode (EDIT or SEND)
   * no conditional entitlement UI logic should exist outside backend
   * frontend (bot) must only render what backend returns
+  * bot must call answerCallbackQuery for every callback_query regardless of render_mode
 
 Purpose:
 
@@ -1660,18 +1799,49 @@ Rules:
 ---
 
 #### Button Handling Flow
-1. user clicks button
-2. bot sends callback to backend
+1. user clicks button (Telegram sends callback_query to bot)
+2. bot forwards callback to backend
 3. backend:
    - validates action
    - checks token / quota / rules
    - returns:
+      - status_code
       - message_key
       - data
       - button_set
-4. bot renders:
-   - message (from message system)
-   - buttons (from button system)
+      - render_mode (EDIT or SEND)
+4. bot calls answerCallbackQuery to acknowledge the button press (required — clears the loading spinner)
+5. bot renders based on render_mode:
+   - IF render_mode is EDIT:
+      * call editMessageText on the original message (in-place update, no new message)
+   - IF render_mode is SEND:
+      * call sendMessage to create a new message
+
+---
+
+#### C.7.11.1 Message Render Mode Rule
+
+The bot must determine how to deliver each response based on the `render_mode` field returned by the backend.
+
+render_mode: EDIT
+- The bot calls Telegram editMessageText with the new content and buttons.
+- No new message is created. The user sees the same message area update smoothly.
+- Used for all callback-query-triggered navigation and state transitions.
+- This eliminates stale/dangling interactive buttons on old messages and keeps the chat uncluttered.
+
+render_mode: SEND
+- The bot calls Telegram sendMessage to create a new message.
+- Used for initial contact, proactive server-to-user notifications, and file delivery results.
+- File delivery (download link) must always be a new message so the user can scroll back to it later.
+
+answerCallbackQuery requirement:
+- The bot MUST always call answerCallbackQuery for every callback_query received, regardless of render_mode.
+- Failure to call answerCallbackQuery causes Telegram to show a permanent loading spinner on the button.
+- answerCallbackQuery may optionally carry a short toast notification text.
+
+Stale button prevention:
+- Because all button-press responses use editMessageText (EDIT), old messages are automatically updated and no stale buttons remain active.
+- For SEND responses that are proactive (e.g., payment_approved), the user's last interactive menu is not touched, which is intentional — the admin-triggered notification is a new independent event.
 
 ---
 
@@ -1679,7 +1849,9 @@ Rules:
 Backend must return:
 ```json
 {
+  "status_code": "TOKEN_EXHAUSTED",
   "message_key": "QUOTA_EXCEEDED_WITH_ACTION",
+  "render_mode": "EDIT",
   "data": {},
   "buttons": [
     { "type": "BUY_PLAN" },
