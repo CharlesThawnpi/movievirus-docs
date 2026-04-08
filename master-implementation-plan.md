@@ -269,6 +269,13 @@
 * Added trial_auto_enrolled and trial_exhausted states to C.3.3 State → UX Mapping
 * Added new user auto-enrollment as a locked Phase-1 decision in B.3.10
 
+### A.3.34 | 2026-04-08
+* Introduced in-place message editing (EDIT vs SEND) as the standard message rendering mode for Telegram bot interactions
+* Added Message Render Mode Rule as C.7.11.1: button-click (callback_query) responses must edit the existing message in place; only proactive and initial messages send new messages
+* Added `render_mode` field to the Response Contract, C.3.3 Core Mapping Structure, all C.3.3 mapping states, and API response format
+* Updated C.3.1.2 Dynamic Button System with in-place edit preference, stale-button prevention guidance, and answerCallbackQuery requirement
+* Updated C.7.11 Button Handling Flow to specify editMessageText for callback-triggered responses
+
 ---
 
 # =========================================================
@@ -1066,6 +1073,29 @@ Rules:
    - which buttons to show
    - button labels (via message keys)
    - button actions (callback or deep link)
+   - render_mode (EDIT or SEND)
+
+In-Place Message Edit Preference:
+- When a user clicks an inline keyboard button, Telegram sends a callback_query to the bot.
+- The bot MUST prefer editing the existing message in place (Telegram editMessageText) rather than sending a new message.
+- The bot MUST call answerCallbackQuery to acknowledge every button press and dismiss the loading spinner.
+- Sending a new message for every button click causes stale/dangling buttons on old messages, which users may still click, wasting server resources and creating confusing UX.
+
+When to EDIT existing message (render_mode: EDIT):
+- Any response triggered by a callback_query (inline button click)
+- Navigation between menus (Main Menu ↔ My Account ↔ Help ↔ Search, etc.)
+- Status updates during a request flow within the same interaction
+- Denial messages (quota exceeded, token invalid, cooldown) triggered by a button press
+
+When to SEND new message (render_mode: SEND):
+- Initial messages: /start, auto-enrollment welcome, first contact
+- Proactive server-to-user notifications: quota reminders, payment approved/rejected
+- File delivery result: download link should always be a new standalone message the user can scroll back to
+- Any event triggered outside a callback context (scheduled tasks, admin actions)
+
+Stale Button Prevention:
+- When a response requires render_mode: SEND (e.g. proactive notification), the bot should NOT delete or edit the old interactive message.
+- The bot SHOULD avoid leaving old interactive menus active when context has changed significantly. Where practical, the bot may call editMessageReplyMarkup with an empty keyboard on any outdated interactive message.
 
 Button Types:
 1. Navigation Buttons
@@ -1124,9 +1154,14 @@ OUTPUT:
   * button_set_key
   * quota_effect
   * log_type
+  * render_mode
 
 Optional:
   * metadata
+
+render_mode values:
+  * EDIT — bot edits the existing message in place (editMessageText); used for callback-query-triggered states
+  * SEND — bot sends a new message (sendMessage); used for initial messages and proactive notifications
 
 #### Mapping Table (Phase 1)
 
@@ -1138,6 +1173,7 @@ STATE: trial_auto_enrolled
   * button_set_key: TRIAL_WELCOME
   * quota_effect: none
   * log_type: enrollment_auto_trial
+  * render_mode: SEND
   * metadata: trial_quota_remaining, trial_daily_cap, plan_name
 
 STATE: token_required
@@ -1146,6 +1182,7 @@ STATE: token_required
   * button_set_key: TOKEN_ENTRY
   * quota_effect: none
   * log_type: validation_prompt
+  * render_mode: EDIT
 
 STATE: token_invalid
   * status_code: INVALID_TOKEN
@@ -1153,6 +1190,7 @@ STATE: token_invalid
   * button_set_key: TOKEN_RETRY
   * quota_effect: none
   * log_type: validation_denied
+  * render_mode: EDIT
 
 STATE: token_linked_success
   * status_code: TOKEN_LINKED_SUCCESS
@@ -1160,6 +1198,7 @@ STATE: token_linked_success
   * button_set_key: MAIN_MENU
   * quota_effect: none
   * log_type: linked_account_added
+  * render_mode: EDIT
 
 ##### 2. PLAN / ACCESS CONTROL
 
@@ -1169,6 +1208,7 @@ STATE: trial_exhausted
   * button_set_key: PLAN_PURCHASE
   * quota_effect: none
   * log_type: validation_denied
+  * render_mode: EDIT
   * metadata: recommended_plan
 
 STATE: quota_exhausted
@@ -1177,6 +1217,7 @@ STATE: quota_exhausted
   * button_set_key: PLAN_ACTIONS
   * quota_effect: none
   * log_type: validation_denied
+  * render_mode: EDIT
 
 STATE: daily_limit_reached
   * status_code: TOKEN_DAILY_CAP_REACHED
@@ -1184,6 +1225,7 @@ STATE: daily_limit_reached
   * button_set_key: PLAN_ACTIONS
   * quota_effect: none
   * log_type: validation_denied
+  * render_mode: EDIT
 
 STATE: linked_account_limit_reached
   * status_code: LINKED_ACCOUNT_LIMIT_REACHED
@@ -1191,6 +1233,7 @@ STATE: linked_account_limit_reached
   * button_set_key: HELP
   * quota_effect: none
   * log_type: validation_denied
+  * render_mode: EDIT
 
 STATE: validation_cooldown_blocked
   * status_code: VALIDATION_COOLDOWN_BLOCKED
@@ -1198,6 +1241,7 @@ STATE: validation_cooldown_blocked
   * button_set_key: HELP
   * quota_effect: none
   * log_type: validation_blocked
+  * render_mode: EDIT
 
 ##### 3. REMINDERS
 
@@ -1207,6 +1251,7 @@ STATE: quota_5_left
   * button_set_key: PLAN_ACTIONS
   * quota_effect: none
   * log_type: reminder_sent
+  * render_mode: SEND
 
 STATE: quota_1_left
   * status_code: QUOTA_REMINDER_1_LEFT
@@ -1214,6 +1259,7 @@ STATE: quota_1_left
   * button_set_key: PLAN_ACTIONS
   * quota_effect: none
   * log_type: reminder_sent
+  * render_mode: SEND
 
 STATE: quota_0_left
   * status_code: TOKEN_EXHAUSTED
@@ -1221,6 +1267,7 @@ STATE: quota_0_left
   * button_set_key: PLAN_PURCHASE
   * quota_effect: none
   * log_type: reminder_sent
+  * render_mode: SEND
 
 ##### 4. REQUEST FLOW
 
@@ -1230,6 +1277,7 @@ STATE: request_confirm
   * button_set_key: REQUEST_CONFIRM
   * quota_effect: none
   * log_type: request_validated
+  * render_mode: EDIT
 
 STATE: request_processing
   * status_code: REQUEST_PROCESSING
@@ -1237,6 +1285,7 @@ STATE: request_processing
   * button_set_key: NONE
   * quota_effect: none
   * log_type: request_processing
+  * render_mode: EDIT
 
 STATE: duplicate_ignored
   * status_code: DUPLICATE_REQUEST_IGNORED
@@ -1244,6 +1293,7 @@ STATE: duplicate_ignored
   * button_set_key: BACK
   * quota_effect: none
   * log_type: duplicate_ignored
+  * render_mode: EDIT
 
 ##### 5. DELIVERY
 
@@ -1253,6 +1303,7 @@ STATE: delivery_success
   * button_set_key: DOWNLOAD_ACTION
   * quota_effect: decremented
   * log_type: delivery_success
+  * render_mode: SEND
 
 STATE: delivery_failed
   * status_code: REQUEST_FAILURE_RECORDED
@@ -1260,6 +1311,7 @@ STATE: delivery_failed
   * button_set_key: RETRY_ACTION
   * quota_effect: none
   * log_type: delivery_failed
+  * render_mode: EDIT
 
 ##### 6. PAYMENT
 
@@ -1269,6 +1321,7 @@ STATE: payment_submitted
   * button_set_key: NONE
   * quota_effect: none
   * log_type: payment_submitted
+  * render_mode: EDIT
 
 STATE: payment_approved
   * status_code: PAYMENT_APPROVED_TOKEN_CREATED
@@ -1276,6 +1329,7 @@ STATE: payment_approved
   * button_set_key: MAIN_MENU
   * quota_effect: none
   * log_type: payment_approved
+  * render_mode: SEND
 
 STATE: payment_rejected
   * status_code: PAYMENT_REJECTED
@@ -1283,6 +1337,7 @@ STATE: payment_rejected
   * button_set_key: PLAN_PURCHASE
   * quota_effect: none
   * log_type: payment_rejected
+  * render_mode: SEND
 
 #### Rules
 
@@ -1291,8 +1346,10 @@ STATE: payment_rejected
   * every state MUST map to one button_set_key (or NONE)
   * every state MUST explicitly define quota_effect
   * every state MUST explicitly define log_type
+  * every state MUST explicitly define render_mode (EDIT or SEND)
   * no conditional entitlement UI logic should exist outside backend
   * frontend (bot) must only render what backend returns
+  * bot must call answerCallbackQuery for every callback_query regardless of render_mode
 
 Purpose:
 
@@ -1742,18 +1799,49 @@ Rules:
 ---
 
 #### Button Handling Flow
-1. user clicks button
-2. bot sends callback to backend
+1. user clicks button (Telegram sends callback_query to bot)
+2. bot forwards callback to backend
 3. backend:
    - validates action
    - checks token / quota / rules
    - returns:
+      - status_code
       - message_key
       - data
       - button_set
-4. bot renders:
-   - message (from message system)
-   - buttons (from button system)
+      - render_mode (EDIT or SEND)
+4. bot calls answerCallbackQuery to acknowledge the button press (required — clears the loading spinner)
+5. bot renders based on render_mode:
+   - IF render_mode is EDIT:
+      * call editMessageText on the original message (in-place update, no new message)
+   - IF render_mode is SEND:
+      * call sendMessage to create a new message
+
+---
+
+#### C.7.11.1 Message Render Mode Rule
+
+The bot must determine how to deliver each response based on the `render_mode` field returned by the backend.
+
+render_mode: EDIT
+- The bot calls Telegram editMessageText with the new content and buttons.
+- No new message is created. The user sees the same message area update smoothly.
+- Used for all callback-query-triggered navigation and state transitions.
+- This eliminates stale/dangling interactive buttons on old messages and keeps the chat uncluttered.
+
+render_mode: SEND
+- The bot calls Telegram sendMessage to create a new message.
+- Used for initial contact, proactive server-to-user notifications, and file delivery results.
+- File delivery (download link) must always be a new message so the user can scroll back to it later.
+
+answerCallbackQuery requirement:
+- The bot MUST always call answerCallbackQuery for every callback_query received, regardless of render_mode.
+- Failure to call answerCallbackQuery causes Telegram to show a permanent loading spinner on the button.
+- answerCallbackQuery may optionally carry a short toast notification text.
+
+Stale button prevention:
+- Because all button-press responses use editMessageText (EDIT), old messages are automatically updated and no stale buttons remain active.
+- For SEND responses that are proactive (e.g., payment_approved), the user's last interactive menu is not touched, which is intentional — the admin-triggered notification is a new independent event.
 
 ---
 
@@ -1761,7 +1849,9 @@ Rules:
 Backend must return:
 ```json
 {
+  "status_code": "TOKEN_EXHAUSTED",
   "message_key": "QUOTA_EXCEEDED_WITH_ACTION",
+  "render_mode": "EDIT",
   "data": {},
   "buttons": [
     { "type": "BUY_PLAN" },

@@ -189,6 +189,13 @@ Purpose:
 * Updated D.3.1 Request Flow to reflect the two-branch ELSE path (new user vs returning unlinked user)
 * Fixed typo "Trail" → "Trial" in D.1.1.1 plan notes
 * Added trial_auto_enrolled and trial_exhausted compiled instruction states
+
+### A.4.19 | 2026-04-08
+* Introduced in-place message editing as the standard interaction mode for Telegram bot menu navigation
+* Added render_mode (EDIT / SEND) to D.12.3 Message Rendering Contract
+* Added render_mode to RESPONSE CONTRACT RULE in compiled instruction
+* EDIT (editMessageText) is the default for callback-query-triggered responses; SEND (sendMessage) is used for initial messages and proactive notifications
+* Added answerCallbackQuery requirement and stale-button prevention guidance
 ---
 
 # =========================================================
@@ -1583,6 +1590,17 @@ Rendering contract:
   * status_code = enforcement/result meaning
   * message_key = visible text lookup key
   * button_set_key = visible action/button layout key
+  * render_mode = how the bot delivers the response (EDIT or SEND)
+
+render_mode values:
+  * EDIT — bot edits the existing message in place using Telegram editMessageText
+    * used when response is triggered by a callback_query (button click)
+    * no new message is created; the same message area updates smoothly
+    * eliminates stale/dangling buttons on old messages
+  * SEND — bot sends a new message using Telegram sendMessage
+    * used for initial messages (/start, auto-enrollment welcome)
+    * used for proactive server-to-user notifications (reminders, payment approved/rejected)
+    * used for file delivery results (download link must be a standalone persistent message)
 
 Rules:
 
@@ -1590,6 +1608,8 @@ Rules:
   * WebApp and bot should use the same backend decision contract where relevant
   * Burmese and English wording should remain editable through the dynamic content system
   * support/admin investigation should be able to trace a shown user message back to stable status_code and log_type
+  * bot MUST call answerCallbackQuery for every callback_query received, regardless of render_mode
+  * failure to call answerCallbackQuery causes Telegram to show a permanent loading spinner on the button
 
 ---
 
@@ -1765,6 +1785,7 @@ When designing entitlement-related backend outcomes, use a structured response c
 - button_set_key
 - quota_effect
 - log_type
+- render_mode
 - optional metadata
 
 Rules:
@@ -1772,6 +1793,9 @@ Rules:
 - bot and WebApp must render backend-decided output only
 - visible text must come from dynamic content keys, not hardcoded wording
 - visible buttons must come from backend-selected button sets, not UI guesses
+- render_mode EDIT means bot calls editMessageText on the existing message (no new message)
+- render_mode SEND means bot calls sendMessage to create a new message
+- bot must call answerCallbackQuery for every callback_query, regardless of render_mode
 
 AUDIT RULE
 - All important admin actions must be logged with who acted, what changed, before/after state where relevant, reason, and timestamp.
