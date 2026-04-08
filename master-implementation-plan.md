@@ -260,6 +260,15 @@
 * Expanded admin configuration planning to include feature flags, module registry, and deployment/backup metadata
 * Strengthened system-health, database-strategy, and project-structure rules for migration-safe and change-tolerant implementation
 
+### A.3.33 | 2026-04-08
+* Reconsidered new user onboarding flow to remove the token barrier for first-time users
+* Added New User Auto-Enrollment Rule as C.2.1.2: brand new users are automatically enrolled in Trial plan and linked without being asked for a token
+* Updated C.2.1 validation engine to add new user detection as first check (step 0)
+* Updated C.2.4 Backend Core Decision Engine to include new user detection in the Resolve Actor step
+* Updated C.3.1 Request Flow to distinguish new users (auto-enroll) from returning unlinked users (ask for token)
+* Added trial_auto_enrolled and trial_exhausted states to C.3.3 State → UX Mapping
+* Added new user auto-enrollment as a locked Phase-1 decision in B.3.10
+
 ---
 
 # =========================================================
@@ -617,6 +626,7 @@ The following decisions are locked for Phase 1 and must not be treated as implem
 * standard plans = no time-based expiry
 * Telegram Stars = auto activation after verified successful payment
 * admin quota restore = allowed with dedicated audit logging
+* new user auto-enrollment = brand new users (no system record) are automatically enrolled in Trial plan on first contact without being asked for a token; returning unlinked users are still asked for a token
 
 Purpose:
 * convert planning logic into developer-safe implementation rules
@@ -696,6 +706,7 @@ Notes:
 - Admin can modify or create new plans dynamically through the WebApp where safe.
 - Standard plans do not expire by time.
 - Trial is treated as a special-case plan and may use explicit expiry rules.
+- Trial plan is used for new user auto-enrollment: brand new users who contact the bot for the first time are automatically enrolled in the Trial plan without being asked for a token. See C.2.1.2 for the full rule.
 - Premium exists as a top-tier default plan even if no legacy source plan maps directly into it.
 - Legacy may exist as an admin-created migration or exception plan, but its values must be explicitly defined before assignment.
 
@@ -729,12 +740,15 @@ Rules:
 
 ### C.2.1 Token & Linked Account Validation Engine
 
-Validation must prioritize linked account recognition over repeated token input.
+Validation must prioritize new user auto-enrollment and linked account recognition over repeated token input.
 
 Core Logic:
+  0. Check if telegram_user_id has any record in the system:
+     * IF no record found (brand new user): → auto-enroll in Trial plan → auto-issue trial token → auto-link account → return TRIAL_AUTO_ENROLLED → skip token input → proceed to post-link validation
+     * IF record found: → continue to step 1
   1. Check if telegram_user_id is linked to any token:
      * IF linked: → use linked token → skip token input
-     * ELSE: → request token → validate token → link account if slot available
+     * ELSE (returning unlinked user): → request token → validate token → link account if slot available
   2. Enforce in exact order:
      * token existence
      * token status
@@ -751,9 +765,48 @@ Core Logic:
   6. Failed validation protection:
      * 5 failed attempts -> 5 minute cooldown
 
+### C.2.1.2 New User Auto-Enrollment Rule
+
+System must automatically enroll brand new users into the Trial plan on first contact.
+
+Definition:
+- A new user is a Telegram account with NO existing record in the system (never interacted before).
+- A returning unlinked user is a Telegram account that exists in the system but is not currently linked to a token. These users must still be asked for their token.
+
+Behavior:
+- On /start or first interaction:
+  - Check if telegram_user_id has any record in the system
+  - IF not found (brand new user):
+    * create member record
+    * auto-assign Trial plan
+    * auto-issue trial token
+    * auto-link the Telegram account to the trial token
+    * deliver TRIAL_AUTO_ENROLLED welcome response
+    * welcome message must include:
+      - trial quota remaining
+      - daily cap
+      - service description
+      - Buy Plan / Upgrade Plan buttons
+  - IF found but not linked (returning unlinked user):
+    * prompt for token entry as normal
+
+Constraints:
+- Trial auto-enrollment must be atomic: member record + token creation + account linking in one DB transaction
+- Trial token must follow standard token security rules (hashed storage, plaintext delivered exactly once)
+- Auto-enrollment must be logged as a standard enrollment_auto_trial event in audit logs
+- If the Trial plan is disabled or unavailable in system config, auto-enrollment must fall back gracefully to asking for token input
+- Trial auto-enrollment must not be available to admin-bypass accounts (ADMIN_USER_IDS skip this entirely)
+
+Purpose:
+- Remove the token barrier for first-time users
+- Improve new member conversion rate
+- Let potential customers experience the service before committing to a paid plan
+- Reduce drop-off caused by asking new users for a token they do not have
+
 Purpose:
 
   * remove repeated token entry
+  * enroll new users immediately without friction
   * enforce fairness via quota + daily cap + controlled sharing
   * keep backend logic deterministic
     
@@ -793,6 +846,13 @@ Purpose:
 The backend must be the only authority for entitlement decisions.
 
 Decision order per request:
+  0. Resolve new user check
+     * check if telegram_user_id has any record in the system
+     * IF no record found (brand new user):
+       * run auto-enrollment (see C.2.1.2)
+       * return TRIAL_AUTO_ENROLLED
+       * skip steps 1–4 and proceed directly to quota/delivery validation
+     * IF record found: continue to step 1
   1. Resolve actor
      * identify telegram_user_id
      * identify whether access comes from linked-account path or token-input path
@@ -942,9 +1002,15 @@ Store in:
 ### C.3.1 Request Flow Implementation
 1. User selects file
 2. System checks access path:
-   IF telegram_user_id is linked:
+   IF telegram_user_id has NO record in system (brand new user):
+      → auto-enroll in Trial plan (see C.2.1.2)
+      → auto-issue trial token
+      → auto-link account
+      → welcome user with trial details
       → continue
-   ELSE:
+   ELSE IF telegram_user_id is linked:
+      → continue
+   ELSE (returning user, not linked):
       → request token
       → validate token
       → link account if allowed
@@ -1066,6 +1132,14 @@ Optional:
 
 ##### 1. ACCESS / TOKEN
 
+STATE: trial_auto_enrolled
+  * status_code: TRIAL_AUTO_ENROLLED
+  * message_key: WELCOME_TRIAL
+  * button_set_key: TRIAL_WELCOME
+  * quota_effect: none
+  * log_type: enrollment_auto_trial
+  * metadata: trial_quota_remaining, trial_daily_cap, plan_name
+
 STATE: token_required
   * status_code: TOKEN_REQUIRED
   * message_key: ASK_TOKEN
@@ -1088,6 +1162,14 @@ STATE: token_linked_success
   * log_type: linked_account_added
 
 ##### 2. PLAN / ACCESS CONTROL
+
+STATE: trial_exhausted
+  * status_code: TRIAL_EXHAUSTED
+  * message_key: TRIAL_QUOTA_EXHAUSTED
+  * button_set_key: PLAN_PURCHASE
+  * quota_effect: none
+  * log_type: validation_denied
+  * metadata: recommended_plan
 
 STATE: quota_exhausted
   * status_code: TOKEN_EXHAUSTED
